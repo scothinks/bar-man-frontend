@@ -1,5 +1,5 @@
 import React from 'react';
-import { useInventory } from '../context/InventoryContext';
+import { useInventory } from '../contexts/InventoryContext';
 import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography } from '@mui/material';
 
 const Inventory = () => {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useSales } from '../context/SalesContext';
-import { useInventory } from '../context/InventoryContext';
+import { useSales } from '../contexts/SalesContext';
+import { useInventory } from '../contexts/InventoryContext';
 import { TextField, Button, Select, MenuItem, FormControl, InputLabel, Typography } from '@mui/material';
 
 const Sales = () => {

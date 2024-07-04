@@ -1,7 +1,7 @@
 import React from 'react';
-import { BrowserRouter as Router, Route, Switch, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Link } from 'react-router-dom';
 import { AppBar, Toolbar, Button, Typography, Box, Container } from '@mui/material';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts';
 import Inventory from './components/Inventory';
 import Sales from './components/Sales';
 import CustomerTabs from './components/CustomerTabs';
@@ -41,13 +41,13 @@ const App = () => {
       <Router>
         <Navigation />
         <Container>
-          <Switch>
-            <Route exact path="/" component={Inventory} />
-            <Route path="/sales" component={Sales} />
-            <Route path="/customer-tabs" component={CustomerTabs} />
-            <Route path="/admin" component={AdminManagement} />
-            <Route path="/login" component={Login} />
-          </Switch>
+          <Routes>
+            <Route path="/" element={<Inventory />} />
+            <Route path="/sales" element={<Sales />} />
+            <Route path="/customer-tabs" element={<CustomerTabs />} />
+            <Route path="/admin" element={<AdminManagement />} />
+            <Route path="/login" element={<Login />} />
+          </Routes>
         </Container>
       </Router>
     </AuthProvider>

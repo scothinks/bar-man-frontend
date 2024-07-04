@@ -1,19 +1,19 @@
 import React, { useState } from 'react';
 import { TextField, Button, Typography } from '@mui/material';
-import { useAuth } from '../contexts/AuthContext';
-import { useHistory } from 'react-router-dom';
+import { useAuth } from '../contexts';
+import { useNavigate } from 'react-router-dom';
 
 const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const { login } = useAuth();
-  const history = useHistory();
+  const { loginUser } = useAuth();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await login(username, password);
-      history.push('/');
+      await loginUser(username, password);
+      navigate('/');
     } catch (error) {
       console.error('Login failed:', error);
       // Handle login error (e.g., show error message)

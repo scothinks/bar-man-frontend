@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCustomer } from '../context/CustomerContext';
+import { useCustomer } from '../contexts/CustomerContext';
 import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, TextField, Button } from '@mui/material';
 
 const CustomerTabs = () => {

@@ -1,17 +1,28 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { setAuthToken, login } from '../services/api';
+import { setAuthToken, login, getCurrentUser } from '../services/api';
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      setAuthToken(token);
-      // You might want to fetch user data here
-    }
+    const initializeAuth = async () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        setAuthToken(token);
+        try {
+          const userData = await getCurrentUser();
+          setUser(userData);
+        } catch (error) {
+          console.error('Failed to get user data:', error);
+          logout();
+        }
+      }
+      setLoading(false);
+    };
+    initializeAuth();
   }, []);
 
   const loginUser = async (username, password) => {
@@ -32,8 +43,14 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const isAuthenticated = () => !!user;
+
+  if (loading) {
+    return <div>Loading...</div>; // Or any loading component
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loginUser, logout }}>
+    <AuthContext.Provider value={{ user, loginUser, logout, isAuthenticated }}>
       {children}
     </AuthContext.Provider>
   );

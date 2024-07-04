@@ -25,4 +25,7 @@ export const createCustomerTab = (tabData) => api.post('/customers/tabs/', tabDa
 export const getUsers = () => api.get('/users/');
 export const createUser = (userData) => api.post('/users/', userData);
 
+// Add this new function
+export const getCurrentUser = () => api.get('/users/me/');
+
 export default api;
