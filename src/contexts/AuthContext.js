@@ -5,7 +5,6 @@ const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const initializeAuth = async () => {
@@ -20,7 +19,6 @@ export const AuthProvider = ({ children }) => {
           logout();
         }
       }
-      setLoading(false);
     };
     initializeAuth();
   }, []);
@@ -45,12 +43,22 @@ export const AuthProvider = ({ children }) => {
 
   const isAuthenticated = () => !!user;
 
-  if (loading) {
-    return <div>Loading...</div>; // Or any loading component
-  }
+  const getUser = async () => {
+    if (!user) {
+      try {
+        const userData = await getCurrentUser();
+        setUser(userData);
+        return userData;
+      } catch (error) {
+        console.error('Failed to get user data:', error);
+        return null;
+      }
+    }
+    return user;
+  };
 
   return (
-    <AuthContext.Provider value={{ user, loginUser, logout, isAuthenticated }}>
+    <AuthContext.Provider value={{ user, loginUser, logout, isAuthenticated, getUser }}>
       {children}
     </AuthContext.Provider>
   );

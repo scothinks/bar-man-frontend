@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getCustomerTabs, createCustomerTab } from '../services/api';
 
 const CustomerContext = createContext();
@@ -6,12 +6,16 @@ const CustomerContext = createContext();
 export const CustomerProvider = ({ children }) => {
   const [customerTabs, setCustomerTabs] = useState([]);
 
+  useEffect(() => {
+    fetchCustomerTabs();
+  }, []);
+
   const fetchCustomerTabs = async () => {
     try {
       const response = await getCustomerTabs();
       setCustomerTabs(response.data);
     } catch (error) {
-      console.error('Failed to fetch customer tabs:', error);
+      console.error('Error fetching customer tabs:', error);
     }
   };
 
@@ -19,21 +23,24 @@ export const CustomerProvider = ({ children }) => {
     try {
       const response = await createCustomerTab(tabData);
       setCustomerTabs([...customerTabs, response.data]);
+      return response.data;
     } catch (error) {
-      console.error('Failed to create customer tab:', error);
+      console.error('Error adding customer tab:', error);
       throw error;
     }
   };
 
-  useEffect(() => {
-    fetchCustomerTabs();
-  }, []);
-
   return (
-    <CustomerContext.Provider value={{ customerTabs, addCustomerTab, fetchCustomerTabs }}>
+    <CustomerContext.Provider value={{ customerTabs, addCustomerTab }}>
       {children}
     </CustomerContext.Provider>
   );
 };
 
-export const useCustomer = () => useContext(CustomerContext);
+export const useCustomer = () => {
+  const context = useContext(CustomerContext);
+  if (!context) {
+    throw new Error('useCustomer must be used within a CustomerProvider');
+  }
+  return context;
+};

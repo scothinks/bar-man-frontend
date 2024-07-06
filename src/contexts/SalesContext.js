@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import { createSale } from '../services/api';
 
 const SalesContext = createContext();
@@ -10,8 +10,9 @@ export const SalesProvider = ({ children }) => {
     try {
       const response = await createSale(saleData);
       setSales([...sales, response.data]);
+      return response.data;
     } catch (error) {
-      console.error('Failed to create sale:', error);
+      console.error('Error adding sale:', error);
       throw error;
     }
   };
@@ -23,4 +24,10 @@ export const SalesProvider = ({ children }) => {
   );
 };
 
-export const useSales = () => useContext(SalesContext);
+export const useSales = () => {
+  const context = useContext(SalesContext);
+  if (!context) {
+    throw new Error('useSales must be used within a SalesProvider');
+  }
+  return context;
+};

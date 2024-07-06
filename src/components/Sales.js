@@ -1,21 +1,33 @@
 import React, { useState } from 'react';
 import { useSales } from '../contexts/SalesContext';
 import { useInventory } from '../contexts/InventoryContext';
-import { TextField, Button, Select, MenuItem, FormControl, InputLabel, Typography } from '@mui/material';
+import { TextField, Button, Select, MenuItem, FormControl, InputLabel, Typography, CircularProgress } from '@mui/material';
 
-const Sales = () => {
+const Sales = () => { 
   const { addSale } = useSales();
-  const { inventory } = useInventory();
+  const { inventoryItems, loading, error } = useInventory();
   const [selectedItem, setSelectedItem] = useState('');
   const [quantity, setQuantity] = useState(1);
 
+  if (loading) return <CircularProgress />;
+  if (error) return <Typography color="error">Error: {error}</Typography>;
+  if (!inventoryItems || !Array.isArray(inventoryItems) || inventoryItems.length === 0) {
+    return <Typography>No inventory items available</Typography>;
+  }
+
   const handleSale = async () => {
+    if (!selectedItem) {
+      alert('Please select an item');
+      return;
+    }
     try {
       await addSale({ item: selectedItem, quantity });
       setSelectedItem('');
       setQuantity(1);
+      alert('Sale recorded successfully');
     } catch (error) {
       console.error('Sale failed:', error);
+      alert('Failed to record sale');
     }
   };
 
@@ -25,7 +37,7 @@ const Sales = () => {
       <FormControl fullWidth margin="normal">
         <InputLabel>Item</InputLabel>
         <Select value={selectedItem} onChange={(e) => setSelectedItem(e.target.value)}>
-          {inventory.map((item) => (
+          {inventoryItems.map((item) => (
             <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
           ))}
         </Select>
@@ -35,10 +47,10 @@ const Sales = () => {
         type="number"
         label="Quantity"
         value={quantity}
-        onChange={(e) => setQuantity(parseInt(e.target.value))}
+        onChange={(e) => setQuantity(parseInt(e.target.value) || 0)}
         margin="normal"
       />
-      <Button variant="contained" color="primary" onClick={handleSale}>
+      <Button variant="contained" color="primary" onClick={handleSale} disabled={!selectedItem}>
         Record Sale
       </Button>
     </div>

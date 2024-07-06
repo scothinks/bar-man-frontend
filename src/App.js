@@ -1,12 +1,17 @@
-import React from 'react';
+import React, { useEffect } from 'react';  
+import { initializeApi, validateToken } from './services/api';
 import { BrowserRouter as Router, Route, Routes, Link } from 'react-router-dom';
 import { AppBar, Toolbar, Button, Typography, Box, Container } from '@mui/material';
-import { AuthProvider, useAuth } from './contexts';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { SalesProvider } from './contexts/SalesContext';
+import { CustomerProvider } from './contexts/CustomerContext';
+import { InventoryProvider } from './contexts/InventoryContext';
 import Inventory from './components/Inventory';
 import Sales from './components/Sales';
 import CustomerTabs from './components/CustomerTabs';
 import AdminManagement from './components/AdminManagement';
-import Login from './components/Login'; // You'll need to create this component
+import Login from './components/Login';
+
 
 const Navigation = () => {
   const { user, logout } = useAuth();
@@ -36,20 +41,40 @@ const Navigation = () => {
 };
 
 const App = () => {
+  useEffect(() => {
+    initializeApi();
+  }, []);  
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const isValid = await validateToken();
+      if (!isValid) {
+        // Redirect to login or show auth error
+      }
+    };
+    checkAuth();
+  }, []);
+
   return (
     <AuthProvider>
-      <Router>
-        <Navigation />
-        <Container>
-          <Routes>
-            <Route path="/" element={<Inventory />} />
-            <Route path="/sales" element={<Sales />} />
-            <Route path="/customer-tabs" element={<CustomerTabs />} />
-            <Route path="/admin" element={<AdminManagement />} />
-            <Route path="/login" element={<Login />} />
-          </Routes>
-        </Container>
-      </Router>
+      <InventoryProvider>
+        <SalesProvider>
+          <CustomerProvider>
+            <Router>
+              <Navigation />
+              <Container>
+                <Routes>
+                  <Route path="/" element={<Inventory />} />
+                  <Route path="/sales" element={<Sales />} />
+                  <Route path="/customer-tabs" element={<CustomerTabs />} />
+                  <Route path="/admin" element={<AdminManagement />} />
+                  <Route path="/login" element={<Login />} />
+                </Routes>
+              </Container>
+            </Router>
+          </CustomerProvider>
+        </SalesProvider>
+      </InventoryProvider>
     </AuthProvider>
   );
 };
