@@ -58,6 +58,7 @@ export const initializeApi = () => {
   }
 };
 
+// Authentication
 export const login = async (username, password) => {
     try {
       console.log('Attempting login for user:', username);
@@ -70,10 +71,8 @@ export const login = async (username, password) => {
         setAuthToken(response.data.token);
         console.log('Token set in localStorage and API headers');
         
-        
         const storedToken = localStorage.getItem('token');
         console.log('Token in localStorage after setting:', storedToken);
-        
         
         console.log('Current API headers:', api.defaults.headers);
   
@@ -89,6 +88,12 @@ export const login = async (username, password) => {
     }
   };
 
+export const logout = () => {
+    localStorage.removeItem('token');
+    setAuthToken(null);
+    // Redirect to login page
+};
+
 export const validateToken = async () => {
     try {
       await getCurrentUser();
@@ -101,23 +106,26 @@ export const validateToken = async () => {
       }
       throw error;
     }
-  };
+};
 
- 
-
-export const logout = () => {
-    localStorage.removeItem('token');
-    setAuthToken(null);
-    // Redirect to login page
-  };
-
+// Inventory operations
 export const getInventoryItems = () => retryRequest(() => api.get('/inventoryitems/'));
-export const createInventoryItems= (itemData) => api.post('/inventoryitems/', itemData);
+export const createInventoryItem = (itemData) => api.post('/inventoryitems/', itemData);
 export const updateInventoryItem = (id, itemData) => api.put(`/inventoryitems/${id}/`, itemData);
 export const deleteInventoryItem = (id) => api.delete(`/inventoryitems/${id}/`);
+
+// Sales operations
 export const createSale = (saleData) => retryRequest(() => api.post('/sales/', saleData));
-export const getCustomerTabs = () => retryRequest(() => api.get('/customers/tabs/'));
-export const createCustomerTab = (tabData) => retryRequest(() => api.post('/customers/tabs/', tabData));
+export const updateSalePaymentStatus = (saleId, status) => api.patch(`/sales/${saleId}/update_payment_status/`, { payment_status: status });
+export const allocateSaleToCustomer = (saleId, customerId) => api.post(`/sales/${saleId}/allocate_to_customer/`, { customer_id: customerId });
+
+// Customer operations
+export const getCustomers = () => api.get('/customers/');
+export const createCustomer = (customerData) => api.post('/customers/', customerData);
+export const getCustomerTabs = () => api.get('/customers/tabs/');
+export const createCustomerTab = (tabData) => api.post('/customers/tabs/', tabData);
+
+// User management operations (for admin)
 export const getUsers = () => retryRequest(() => api.get('/users/'));
 export const createUser = (userData) => retryRequest(() => api.post('/users/', userData));
 export const getCurrentUser = () => retryRequest(() => api.get('/users/me/'));

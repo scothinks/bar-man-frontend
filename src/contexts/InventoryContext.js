@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { getInventoryItems } from '../services/api';
+import { getInventoryItems, createInventoryItem } from '../services/api';
 import { useAuth } from './AuthContext';
 
 const InventoryContext = createContext();
@@ -14,7 +14,16 @@ export const InventoryProvider = ({ children }) => {
     try {
       setLoading(true);
       const response = await getInventoryItems();
-      setInventoryItems(response.data);
+      console.log('API Response:', response.data);
+      const items = response.data.results || response.data; // Handle both paginated and non-paginated responses
+      const formattedItems = Array.isArray(items) 
+        ? items.map(item => ({
+            ...item,
+            cost: typeof item.cost === 'string' ? parseFloat(item.cost) : item.cost
+          }))
+        : [];
+      console.log('Formatted Items:', formattedItems);
+      setInventoryItems(formattedItems);
       setError(null);
     } catch (err) {
       console.error('Error fetching inventory items:', err);
@@ -22,13 +31,44 @@ export const InventoryProvider = ({ children }) => {
         logout();
         setError('Session expired. Please login again.');
       } else if (err.response && err.response.status === 429 && retryCount < 3) {
-        const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff
+        const delay = Math.pow(2, retryCount) * 1000;
         console.log(`Rate limited. Retrying in ${delay}ms...`);
         setTimeout(() => fetchInventoryItems(retryCount + 1), delay);
-        return; // Exit the function to prevent setting loading to false
+        return;
       } else {
         setError(`Failed to fetch inventory items: ${err.message}`);
       }
+    } finally {
+      setLoading(false);
+    }
+  }, [logout]);
+
+  const addInventoryItem = useCallback(async (newItem) => {
+    try {
+      setLoading(true);
+      const itemToAdd = {
+        ...newItem,
+        cost: typeof newItem.cost === 'string' ? parseFloat(newItem.cost) : newItem.cost
+      };
+      console.log('Adding item:', itemToAdd);
+      const response = await createInventoryItem(itemToAdd);
+      console.log('API Response for new item:', response.data);
+      setInventoryItems(prevItems => {
+        const updatedItems = [...prevItems, response.data];
+        console.log('Updated inventory items:', updatedItems);
+        return updatedItems;
+      });
+      setError(null);
+      return response.data;
+    } catch (err) {
+      console.error('Error adding inventory item:', err);
+      if (err.response && err.response.status === 401) {
+        logout();
+        setError('Session expired. Please login again.');
+      } else {
+        setError(`Failed to add inventory item: ${err.message}`);
+      }
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -38,8 +78,12 @@ export const InventoryProvider = ({ children }) => {
     fetchInventoryItems();
   }, [fetchInventoryItems]);
 
+  useEffect(() => {
+    console.log('Current inventory items:', inventoryItems);
+  }, [inventoryItems]);
+
   return (
-    <InventoryContext.Provider value={{ inventoryItems, loading, error, fetchInventoryItems }}>
+    <InventoryContext.Provider value={{ inventoryItems, loading, error, fetchInventoryItems, addInventoryItem }}>
       {children}
     </InventoryContext.Provider>
   );

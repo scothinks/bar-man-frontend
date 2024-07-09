@@ -12,6 +12,7 @@ const AdminManagement = () => {
     can_report_sales: false,
     can_create_tabs: false,
     can_update_tabs: false,
+    can_create_customers: false,  // Add this line
   });
 
   useEffect(() => {
@@ -39,6 +40,7 @@ const AdminManagement = () => {
         can_report_sales: false,
         can_create_tabs: false,
         can_update_tabs: false,
+        can_create_customers: false,  // Add this line
       });
     } catch (error) {
       console.error('Failed to create user:', error);
@@ -66,7 +68,8 @@ const AdminManagement = () => {
                   {user.can_update_inventory && 'Update Inventory, '}
                   {user.can_report_sales && 'Report Sales, '}
                   {user.can_create_tabs && 'Create Tabs, '}
-                  {user.can_update_tabs && 'Update Tabs'}
+                  {user.can_update_tabs && 'Update Tabs, '}
+                  {user.can_create_customers && 'Create Customers'}  {/* Add this line */}
                 </TableCell>
               </TableRow>
             ))}
@@ -111,6 +114,10 @@ const AdminManagement = () => {
       <FormControlLabel
         control={<Checkbox checked={newUser.can_update_tabs} onChange={(e) => setNewUser({ ...newUser, can_update_tabs: e.target.checked })} />}
         label="Can Update Tabs"
+      />
+      <FormControlLabel
+        control={<Checkbox checked={newUser.can_create_customers} onChange={(e) => setNewUser({ ...newUser, can_create_customers: e.target.checked })} />}
+        label="Can Create Customers"
       />
       <Button variant="contained" color="primary" onClick={handleCreateUser}>
         Create User
