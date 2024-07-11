@@ -1,210 +1,182 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { useSales } from '../contexts/SalesContext';
 import { useInventory } from '../contexts/InventoryContext';
+import { useCustomer } from '../contexts/CustomerContext';
 import { 
-  TextField, Button, Select, MenuItem, FormControl, InputLabel, Typography, 
+  Button, Typography, 
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, 
-  CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle 
+  CircularProgress, Box, TextField, Select, MenuItem, FormControl, InputLabel
 } from '@mui/material';
+import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { enUS } from 'date-fns/locale';
 
 const Sales = () => {
-  const { sales, customers, loading, error, addSale, updatePaymentStatus, fetchCustomers, addCustomer, addCustomerTab } = useSales();
-  const { inventoryItems } = useInventory();
-  const [selectedItem, setSelectedItem] = useState('');
-  const [quantity, setQuantity] = useState(1);
-  const [paymentStatus, setPaymentStatus] = useState('PENDING');
-  const [selectedCustomer, setSelectedCustomer] = useState('');
-  const [openNewCustomerDialog, setOpenNewCustomerDialog] = useState(false);
-  const [newCustomer, setNewCustomer] = useState({ name: '', phone_number: '' });
+  const { 
+    sales = [], 
+    loading, 
+    error, 
+    updatePaymentStatus, 
+    fetchSales, 
+    summary,
+    addSale
+  } = useSales();
+  const { inventoryItems = [] } = useInventory();
+  const { customers } = useCustomer();
+  const [newSale, setNewSale] = useState({ item: '', quantity: 1, customer: '' });
+  const [currentPage, setCurrentPage] = useState(0);
+  const [startDate, setStartDate] = useState(null);
+  const [endDate, setEndDate] = useState(null);
+
+  const fetchSalesData = useCallback((reset = false) => {
+    const filters = {
+      start_date: startDate ? startDate.toISOString().split('T')[0] : null,
+      end_date: endDate ? endDate.toISOString().split('T')[0] : null,
+      offset: currentPage * 5,
+      limit: 5
+    };
+    console.log('Fetching sales with filters:', filters);
+    fetchSales(filters, reset).catch((error) => {
+      console.error('Error fetching sales:', error);
+    });
+  }, [fetchSales, startDate, endDate, currentPage]);
 
   useEffect(() => {
-    fetchCustomers();
-  }, [fetchCustomers]);
-
-  const handleSale = async () => {
-    if (!selectedItem) {
-      alert('Please select an item');
-      return;
-    }
-    try {
-      const saleResponse = await addSale({ 
-        item: selectedItem, 
-        quantity, 
-        payment_status: paymentStatus,
-        customer: selectedCustomer 
-      });
-
-      if (paymentStatus === 'PENDING') {
-        await addCustomerTab({
-          customer: selectedCustomer,
-          sale: saleResponse.id,
-          amount: saleResponse.total_amount  // Assuming your sale response includes the total amount
-        });
-      }
-
-      setSelectedItem('');
-      setQuantity(1);
-      setPaymentStatus('PENDING');
-      setSelectedCustomer('');
-      alert('Sale recorded successfully' + (paymentStatus === 'PENDING' ? ' and customer tab created' : ''));
-    } catch (error) {
-      console.error('Sale failed:', error);
-      alert('Failed to record sale');
-    }
-  };
+    fetchSalesData(true);
+  }, [fetchSalesData, startDate, endDate, currentPage]);
 
   const handleUpdatePaymentStatus = async (saleId, newStatus) => {
     try {
       await updatePaymentStatus(saleId, newStatus);
-      if (newStatus === 'DONE') {
-        // Here you might want to close the customer tab or mark it as paid
-        // This depends on how your backend API is set up
-        // await closeCustomerTab(saleId);
-      }
-      alert('Payment status updated successfully');
+      fetchSalesData(true);
     } catch (error) {
       console.error('Failed to update payment status:', error);
       alert('Failed to update payment status');
     }
   };
 
-  const handleOpenNewCustomerDialog = () => {
-    setOpenNewCustomerDialog(true);
-  };
-
-  const handleCloseNewCustomerDialog = () => {
-    setOpenNewCustomerDialog(false);
-    setNewCustomer({ name: '', phone_number: '' });
-  };
-
-  const handleAddNewCustomer = async () => {
+  const handleAddSale = async () => {
     try {
-      const addedCustomer = await addCustomer(newCustomer);
-      setSelectedCustomer(addedCustomer.id);
-      handleCloseNewCustomerDialog();
-      alert('New customer added successfully');
+      await addSale(newSale);
+      setNewSale({ item: '', quantity: 1, customer: '' });
+      fetchSalesData(true);
     } catch (error) {
-      console.error('Failed to add new customer:', error);
-      alert('Failed to add new customer');
+      console.error('Failed to add sale:', error);
+      alert('Failed to add sale');
     }
   };
 
-  if (loading) return <CircularProgress />;
+  const handleNextPage = () => {
+    setCurrentPage(prev => prev + 1);
+  };
+
+  const handlePreviousPage = () => {
+    setCurrentPage(prev => Math.max(0, prev - 1));
+  };
+
+  if (loading && sales.length === 0) return <CircularProgress />;
   if (error) return <Typography color="error">Error: {error}</Typography>;
 
   return (
-    <div>
-      <Typography variant="h4" gutterBottom>Record Sale</Typography>
-      <FormControl fullWidth margin="normal">
-        <InputLabel>Item</InputLabel>
-        <Select value={selectedItem} onChange={(e) => setSelectedItem(e.target.value)}>
-          {inventoryItems.map((item) => (
-            <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-      <TextField
-        fullWidth
-        type="number"
-        label="Quantity"
-        value={quantity}
-        onChange={(e) => setQuantity(parseInt(e.target.value) || 0)}
-        margin="normal"
-      />
-      <FormControl fullWidth margin="normal">
-        <InputLabel>Payment Status</InputLabel>
-        <Select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)}>
-          <MenuItem value="PENDING">Pending</MenuItem>
-          <MenuItem value="DONE">Done</MenuItem>
-        </Select>
-      </FormControl>
-      <FormControl fullWidth margin="normal">
-        <InputLabel>Customer</InputLabel>
-        <Select value={selectedCustomer} onChange={(e) => setSelectedCustomer(e.target.value)}>
-          {customers && customers.map((customer) => (
-            <MenuItem key={customer.id} value={customer.id}>{customer.name}</MenuItem>
-          ))}
-          <MenuItem value="new">
-            <em>Add New Customer</em>
-          </MenuItem>
-        </Select>
-      </FormControl>
-      {selectedCustomer === 'new' && (
-        <Button color="primary" onClick={handleOpenNewCustomerDialog}>
-          Create New Customer
-        </Button>
-      )}
-      <Button variant="contained" color="primary" onClick={handleSale} disabled={!selectedItem || selectedCustomer === 'new'}>
-        Record Sale
-      </Button>
-
-      {/* New Customer Dialog */}
-      <Dialog open={openNewCustomerDialog} onClose={handleCloseNewCustomerDialog}>
-        <DialogTitle>Add New Customer</DialogTitle>
-        <DialogContent>
+    <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={enUS}>
+      <Box sx={{ display: 'flex', flexDirection: 'row', height: '100vh', padding: 2 }}>
+        <Box sx={{ flexGrow: 1, overflowY: 'auto', mr: 2 }}>
+          <Typography variant="h4" gutterBottom>Sales List</Typography>
+          <Typography variant="h6" gutterBottom>
+            Total Done: ₦{summary.total_done?.toFixed(2) || '0.00'} | Total Pending: ₦{summary.total_pending?.toFixed(2) || '0.00'}
+          </Typography>
+          <Box sx={{ display: 'flex', mb: 2 }}>
+            <DatePicker
+              label="Start Date"
+              value={startDate}
+              onChange={setStartDate}
+              renderInput={(params) => <TextField {...params} />}
+            />
+            <DatePicker
+              label="End Date"
+              value={endDate}
+              onChange={setEndDate}
+              renderInput={(params) => <TextField {...params} sx={{ ml: 2 }} />}
+            />
+          </Box>
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Item</TableCell>
+                  <TableCell>Quantity</TableCell>
+                  <TableCell>Amount</TableCell>
+                  <TableCell>Payment Status</TableCell>
+                  <TableCell>Customer</TableCell>
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {sales.map((sale) => (
+                  <TableRow key={sale.id}>
+                    <TableCell>{sale.item_name}</TableCell>
+                    <TableCell>{sale.quantity}</TableCell>
+                    <TableCell>₦{sale.total_amount?.toFixed(2) || '0.00'}</TableCell>
+                    <TableCell>{sale.payment_status}</TableCell>
+                    <TableCell>{sale.customer_name}</TableCell>
+                    <TableCell>
+                      <Button 
+                        onClick={() => handleUpdatePaymentStatus(sale.id, sale.payment_status === 'PENDING' ? 'DONE' : 'PENDING')}
+                      >
+                        {sale.payment_status === 'PENDING' ? 'Mark as Paid' : 'Mark as Pending'}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
+            <Button onClick={handlePreviousPage} disabled={currentPage === 0}>Previous</Button>
+            <Button onClick={handleNextPage} disabled={sales.length < 5}>Next</Button>
+          </Box>
+        </Box>
+        <Box sx={{ width: '300px' }}>
+          <Typography variant="h6" gutterBottom>Add New Sale</Typography>
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Item</InputLabel>
+            <Select
+              value={newSale.item}
+              onChange={(e) => setNewSale({ ...newSale, item: e.target.value })}
+            >
+              {inventoryItems.map((item) => (
+                <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <TextField
-            autoFocus
-            margin="dense"
-            label="Customer Name"
-            type="text"
             fullWidth
-            value={newCustomer.name}
-            onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
+            label="Quantity"
+            type="number"
+            value={newSale.quantity}
+            onChange={(e) => setNewSale({ ...newSale, quantity: parseInt(e.target.value) })}
+            margin="normal"
           />
-          <TextField
-            margin="dense"
-            label="Phone Number"
-            type="text"
-            fullWidth
-            value={newCustomer.phone_number}
-            onChange={(e) => setNewCustomer({ ...newCustomer, phone_number: e.target.value })}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseNewCustomerDialog} color="primary">
-            Cancel
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Customer</InputLabel>
+            <Select
+              value={newSale.customer}
+              onChange={(e) => setNewSale({ ...newSale, customer: e.target.value })}
+            >
+              <MenuItem value="">
+                <em>None</em>
+              </MenuItem>
+              {customers.map((customer) => (
+                <MenuItem key={customer.id} value={customer.id}>{customer.name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <Button onClick={handleAddSale} variant="contained" fullWidth sx={{ mt: 2 }}>
+            Add Sale
           </Button>
-          <Button onClick={handleAddNewCustomer} color="primary">
-            Add Customer
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Sales List Table */}
-      <Typography variant="h4" gutterBottom style={{ marginTop: '2rem' }}>Sales List</Typography>
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Item</TableCell>
-              <TableCell>Quantity</TableCell>
-              <TableCell>Payment Status</TableCell>
-              <TableCell>Customer</TableCell>
-              <TableCell>Customer Tab</TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {sales.map((sale) => (
-              <TableRow key={sale.id}>
-                <TableCell>{sale.item_name}</TableCell>
-                <TableCell>{sale.quantity}</TableCell>
-                <TableCell>{sale.payment_status}</TableCell>
-                <TableCell>{sale.customer_name}</TableCell>
-                <TableCell>{sale.payment_status === 'PENDING' ? 'Yes' : 'No'}</TableCell>
-                <TableCell>
-                  <Button 
-                    onClick={() => handleUpdatePaymentStatus(sale.id, sale.payment_status === 'PENDING' ? 'DONE' : 'PENDING')}
-                  >
-                    {sale.payment_status === 'PENDING' ? 'Mark as Paid' : 'Mark as Pending'}
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    </div>
+        </Box>
+      </Box>
+    </LocalizationProvider>
   );
 };
 

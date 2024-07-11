@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useInventory } from '../contexts/InventoryContext';
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, Button, CircularProgress, TextField, Dialog, DialogActions, DialogContent, DialogTitle } from '@mui/material';
+import { useAuth } from '../contexts/AuthContext';
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, Button, CircularProgress, TextField, Dialog, DialogActions, DialogContent, DialogTitle, Alert } from '@mui/material';
 
 const formatCost = (cost) => {
   if (cost === null || cost === undefined) return 'N/A';
@@ -10,8 +11,10 @@ const formatCost = (cost) => {
 
 const Inventory = () => {
   const { inventoryItems, loading, error, fetchInventoryItems, addInventoryItem } = useInventory();
+  const { user } = useAuth();
   const [openDialog, setOpenDialog] = useState(false);
   const [newItem, setNewItem] = useState({ name: '', cost: '', quantity: '', low_inventory_threshold: '' });
+  const [addItemError, setAddItemError] = useState('');
 
   useEffect(() => {
     fetchInventoryItems();
@@ -24,9 +27,13 @@ const Inventory = () => {
   const handleOpenDialog = () => {
     console.log('Open dialog button clicked');
     setOpenDialog(true);
+    setAddItemError('');
   };
   
-  const handleCloseDialog = () => setOpenDialog(false);
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
+    setAddItemError('');
+  };
 
   const handleInputChange = (e) => {
     setNewItem({ ...newItem, [e.target.name]: e.target.value });
@@ -39,27 +46,31 @@ const Inventory = () => {
       console.log('Item added:', addedItem);
       handleCloseDialog();
       setNewItem({ name: '', cost: '', quantity: '', low_inventory_threshold: '' });
+      fetchInventoryItems(); // Refresh the inventory list
     } catch (error) {
       console.error("Error adding item:", error);
+      setAddItemError('Failed to add item. Please try again.');
     }
   };
 
   if (loading) return <CircularProgress />;
-  if (error) return <Typography color="error">Error: {error}</Typography>;
+  if (error) return <Alert severity="error">Error: {error}</Alert>;
 
   console.log('Rendering inventory items:', JSON.stringify(inventoryItems, null, 2));
 
   return (
     <div style={{ position: 'relative', zIndex: 1 }}>
       <Typography variant="h4" gutterBottom>Inventory Items</Typography>
-      <Button 
-        variant="contained" 
-        color="primary" 
-        onClick={handleOpenDialog} 
-        style={{ marginBottom: '20px', zIndex: 2 }}
-      >
-        Add New Item
-      </Button>
+      {user && user.can_update_inventory && (
+        <Button 
+          variant="contained" 
+          color="primary" 
+          onClick={handleOpenDialog} 
+          style={{ marginBottom: '20px', zIndex: 2 }}
+        >
+          Add New Item
+        </Button>
+      )}
       {(!inventoryItems || inventoryItems.length === 0) ? (
         <Typography>No inventory items available (Total items: {inventoryItems ? inventoryItems.length : 0})</Typography>
       ) : (
@@ -93,6 +104,7 @@ const Inventory = () => {
       >
         <DialogTitle>Add New Inventory Item</DialogTitle>
         <DialogContent>
+          {addItemError && <Alert severity="error" sx={{ mb: 2 }}>{addItemError}</Alert>}
           <TextField
             autoFocus
             margin="dense"

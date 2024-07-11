@@ -10,7 +10,7 @@ export const InventoryProvider = ({ children }) => {
   const [error, setError] = useState(null);
   const { logout } = useAuth();
 
-  const fetchInventoryItems = useCallback(async (retryCount = 0) => {
+  const fetchInventoryItems = useCallback(async () => {
     try {
       setLoading(true);
       const response = await getInventoryItems();
@@ -30,11 +30,6 @@ export const InventoryProvider = ({ children }) => {
       if (err.response && err.response.status === 401) {
         logout();
         setError('Session expired. Please login again.');
-      } else if (err.response && err.response.status === 429 && retryCount < 3) {
-        const delay = Math.pow(2, retryCount) * 1000;
-        console.log(`Rate limited. Retrying in ${delay}ms...`);
-        setTimeout(() => fetchInventoryItems(retryCount + 1), delay);
-        return;
       } else {
         setError(`Failed to fetch inventory items: ${err.message}`);
       }
@@ -74,6 +69,10 @@ export const InventoryProvider = ({ children }) => {
     }
   }, [logout]);
 
+  const refreshInventory = useCallback(() => {
+    fetchInventoryItems();
+  }, [fetchInventoryItems]);
+
   useEffect(() => {
     fetchInventoryItems();
   }, [fetchInventoryItems]);
@@ -83,7 +82,14 @@ export const InventoryProvider = ({ children }) => {
   }, [inventoryItems]);
 
   return (
-    <InventoryContext.Provider value={{ inventoryItems, loading, error, fetchInventoryItems, addInventoryItem }}>
+    <InventoryContext.Provider value={{ 
+      inventoryItems, 
+      loading, 
+      error, 
+      fetchInventoryItems, 
+      addInventoryItem,
+      refreshInventory
+    }}>
       {children}
     </InventoryContext.Provider>
   );

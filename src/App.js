@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';  
-import { initializeApi, validateToken } from './services/api';
-import { BrowserRouter as Router, Route, Routes, Link } from 'react-router-dom';
-import { AppBar, Toolbar, Button, Typography, Box, Container } from '@mui/material';
+import { initializeApi } from './services/api';
+import { BrowserRouter as Router, Route, Routes, Link, Navigate } from 'react-router-dom';
+import { AppBar, Toolbar, Button, Typography, Box, Container, CircularProgress } from '@mui/material';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SalesProvider } from './contexts/SalesContext';
 import { CustomerProvider } from './contexts/CustomerContext';
@@ -23,15 +23,18 @@ const Navigation = () => {
           BarMan
         </Typography>
         <Box>
-          <Button color="inherit" component={Link} to="/">Inventory</Button>
-          <Button color="inherit" component={Link} to="/sales">Sales</Button>
-          <Button color="inherit" component={Link} to="/customer-tabs">Customer Tabs</Button>
-          {user && user.is_superuser && (
-            <Button color="inherit" component={Link} to="/admin">Admin Management</Button>
+          {user && (
+            <>
+              <Button color="inherit" component={Link} to="/">Inventory</Button>
+              <Button color="inherit" component={Link} to="/sales">Sales</Button>
+              <Button color="inherit" component={Link} to="/customer-tabs">Customer Tabs</Button>
+              {user.is_superuser && (
+                <Button color="inherit" component={Link} to="/admin">Admin Management</Button>
+              )}
+              <Button color="inherit" onClick={logout}>Logout</Button>
+            </>
           )}
-          {user ? (
-            <Button color="inherit" onClick={logout}>Logout</Button>
-          ) : (
+          {!user && (
             <Button color="inherit" component={Link} to="/login">Login</Button>
           )}
         </Box>
@@ -40,40 +43,38 @@ const Navigation = () => {
   );
 };
 
+const PrivateRoute = ({ children }) => {
+  const { user, isLoading } = useAuth();
+  
+  if (isLoading) {
+    return <CircularProgress />;
+  }
+  
+  return user ? children : <Navigate to="/login" />;
+};
+
 const App = () => {
   useEffect(() => {
     initializeApi();
-  }, []);  
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      const isValid = await validateToken();
-      if (!isValid) {
-        // Redirect to login or show auth error
-      }
-    };
-    checkAuth();
   }, []);
 
   return (
     <AuthProvider>
       <InventoryProvider>
-        <SalesProvider>
-          <CustomerProvider>
-            <Router>
-              <Navigation />
-              <Container>
-                <Routes>
-                  <Route path="/" element={<Inventory />} />
-                  <Route path="/sales" element={<Sales />} />
-                  <Route path="/customer-tabs" element={<CustomerTabs />} />
-                  <Route path="/admin" element={<AdminManagement />} />
-                  <Route path="/login" element={<Login />} />
-                </Routes>
-              </Container>
-            </Router>
-          </CustomerProvider>
-        </SalesProvider>
+        <CustomerProvider>
+          <Router>
+            <Navigation />
+            <Container>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/" element={<PrivateRoute><Inventory /></PrivateRoute>} />
+                <Route path="/sales" element={<PrivateRoute><SalesProvider><Sales /></SalesProvider></PrivateRoute>} />
+                <Route path="/customer-tabs" element={<PrivateRoute><CustomerTabs /></PrivateRoute>} />
+                <Route path="/admin" element={<PrivateRoute><AdminManagement /></PrivateRoute>} />
+              </Routes>
+            </Container>
+          </Router>
+        </CustomerProvider>
       </InventoryProvider>
     </AuthProvider>
   );
