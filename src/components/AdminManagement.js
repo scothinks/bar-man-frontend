@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { getUsers, createUser } from '../services/api';
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, TextField, Button, Checkbox, FormControlLabel } from '@mui/material';
+import { useAuth } from '../contexts/AuthContext';
+import { 
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, 
+  Typography, TextField, Button, Checkbox, FormControlLabel, CircularProgress, Alert, Snackbar
+} from '@mui/material';
 
 const AdminManagement = () => {
-  const [users, setUsers] = useState([]);
+  const { user, checkAuth, logout } = useAuth();
   const [newUser, setNewUser] = useState({
     username: '',
     email: '',
@@ -12,26 +17,29 @@ const AdminManagement = () => {
     can_report_sales: false,
     can_create_tabs: false,
     can_update_tabs: false,
-    can_create_customers: false,  // Add this line
+    can_create_customers: false,
   });
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const queryClient = useQueryClient();
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    checkAuth();
+  }, [checkAuth]);
 
-  const fetchUsers = async () => {
-    try {
-      const response = await getUsers();
-      setUsers(response.data);
-    } catch (error) {
+  const { data: users, isLoading, error } = useQuery('users', getUsers, {
+    enabled: !!user && user.is_superuser,
+    onError: (error) => {
       console.error('Failed to fetch users:', error);
-    }
-  };
+      setSnackbar({ open: true, message: 'Failed to fetch users. Please try again.', severity: 'error' });
+      if (error.message === 'Authentication required' || (error.response && error.response.status === 401)) {
+        logout();
+      }
+    },
+  });
 
-  const handleCreateUser = async () => {
-    try {
-      await createUser(newUser);
-      fetchUsers();
+  const createUserMutation = useMutation(createUser, {
+    onSuccess: () => {
+      queryClient.invalidateQueries('users');
       setNewUser({
         username: '',
         email: '',
@@ -40,12 +48,34 @@ const AdminManagement = () => {
         can_report_sales: false,
         can_create_tabs: false,
         can_update_tabs: false,
-        can_create_customers: false,  // Add this line
+        can_create_customers: false,
       });
-    } catch (error) {
+      setSnackbar({ open: true, message: 'User created successfully', severity: 'success' });
+    },
+    onError: (error) => {
       console.error('Failed to create user:', error);
-    }
+      setSnackbar({ open: true, message: 'Failed to create user. Please try again.', severity: 'error' });
+      if (error.message === 'Authentication required' || (error.response && error.response.status === 401)) {
+        logout();
+      }
+    },
+  });
+
+  const handleCreateUser = () => {
+    createUserMutation.mutate(newUser);
   };
+
+  const handleCloseSnackbar = (event, reason) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setSnackbar({ ...snackbar, open: false });
+  };
+
+  if (!user) return <Typography>Please log in to access admin management.</Typography>;
+  if (!user.is_superuser) return <Alert severity="error">You don't have permission to access this page.</Alert>;
+  if (isLoading) return <CircularProgress />;
+  if (error) return <Alert severity="error">{error.message}</Alert>;
 
   return (
     <div>
@@ -60,7 +90,7 @@ const AdminManagement = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {users.map((user) => (
+            {users && users.map((user) => (
               <TableRow key={user.id}>
                 <TableCell>{user.username}</TableCell>
                 <TableCell>{user.email}</TableCell>
@@ -69,7 +99,7 @@ const AdminManagement = () => {
                   {user.can_report_sales && 'Report Sales, '}
                   {user.can_create_tabs && 'Create Tabs, '}
                   {user.can_update_tabs && 'Update Tabs, '}
-                  {user.can_create_customers && 'Create Customers'}  {/* Add this line */}
+                  {user.can_create_customers && 'Create Customers'}
                 </TableCell>
               </TableRow>
             ))}
@@ -119,9 +149,18 @@ const AdminManagement = () => {
         control={<Checkbox checked={newUser.can_create_customers} onChange={(e) => setNewUser({ ...newUser, can_create_customers: e.target.checked })} />}
         label="Can Create Customers"
       />
-      <Button variant="contained" color="primary" onClick={handleCreateUser}>
-        Create User
+      <Button variant="contained" color="primary" onClick={handleCreateUser} disabled={createUserMutation.isLoading}>
+        {createUserMutation.isLoading ? 'Creating...' : 'Create User'}
       </Button>
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </div>
   );
 };

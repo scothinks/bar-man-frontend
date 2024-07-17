@@ -1,19 +1,29 @@
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback, useState, useMemo } from 'react';
 import { useSales } from '../contexts/SalesContext';
 import { useInventory } from '../contexts/InventoryContext';
 import { useCustomer } from '../contexts/CustomerContext';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   Button, Typography, 
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, 
   CircularProgress, Box, TextField, Select, MenuItem, FormControl, InputLabel,
-  Dialog, DialogTitle, DialogContent, DialogActions
+  Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar, IconButton
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { enUS } from 'date-fns/locale';
 import { subDays } from 'date-fns';
+import { AddCircle, RemoveCircle } from '@mui/icons-material';
+
+const formatCost = (cost) => {
+  if (cost === null || cost === undefined) return 'N/A';
+  const numCost = typeof cost === 'string' ? parseFloat(cost) : cost;
+  if (isNaN(numCost)) return 'N/A';
+  return `₦${numCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
 
 const Sales = () => {
+  const { user, checkAuth, logout } = useAuth();
   const { 
     sales = [], 
     loading, 
@@ -21,77 +31,107 @@ const Sales = () => {
     updatePaymentStatus, 
     fetchSales, 
     summary,
-    addSale,
+    addMultipleSales,
     totalSalesCount
   } = useSales();
   const { inventoryItems = [] } = useInventory();
   const { customers, addCustomer } = useCustomer();
-  const [newSale, setNewSale] = useState({ item: '', quantity: 1, customer: '' });
+  const [newSales, setNewSales] = useState([{ item: '', quantity: 1 }]);
   const [newCustomer, setNewCustomer] = useState({ name: '', phone_number: '' });
   const [currentPage, setCurrentPage] = useState(0);
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
-  const [dateFilter, setDateFilter] = useState('custom');
+  const [dateFilter, setDateFilter] = useState('all');
   const [openNewCustomerDialog, setOpenNewCustomerDialog] = useState(false);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const itemsPerPage = 5;
 
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
   const fetchSalesData = useCallback((reset = false) => {
+    if (!user) return;
+    const newPage = reset ? 0 : currentPage;
     const filters = {
       start_date: startDate ? startDate.toISOString().split('T')[0] : null,
       end_date: endDate ? endDate.toISOString().split('T')[0] : null,
-      offset: currentPage * itemsPerPage,
+      offset: newPage * itemsPerPage,
       limit: itemsPerPage
     };
     console.log('Fetching sales with filters:', filters);
     fetchSales(filters, reset).catch((error) => {
       console.error('Error fetching sales:', error);
+      setSnackbar({ open: true, message: 'Failed to fetch sales. Please try again.', severity: 'error' });
+      if (error.message === 'Authentication required' || (error.response && error.response.status === 401)) {
+        logout();
+      }
     });
-  }, [fetchSales, startDate, endDate, currentPage, itemsPerPage]);
+    if (reset) {
+      setCurrentPage(0);
+    }
+  }, [fetchSales, startDate, endDate, currentPage, itemsPerPage, user, logout]);
 
   useEffect(() => {
-    fetchSalesData(true);
-  }, [fetchSalesData, startDate, endDate, currentPage]);
+    if (user) {
+      fetchSalesData(true);
+    }
+  }, [fetchSalesData, user, startDate, endDate, dateFilter]);
 
   const handleUpdatePaymentStatus = async (saleId, newStatus) => {
     try {
       await updatePaymentStatus(saleId, newStatus);
       fetchSalesData(true);
+      setSnackbar({ open: true, message: 'Payment status updated successfully', severity: 'success' });
     } catch (error) {
       console.error('Failed to update payment status:', error);
-      alert('Failed to update payment status');
+      setSnackbar({ open: true, message: 'Failed to update payment status. Please try again.', severity: 'error' });
+      if (error.message === 'Authentication required' || (error.response && error.response.status === 401)) {
+        logout();
+      }
     }
   };
 
-  const handleAddSale = async () => {
+  const handleAddSales = async () => {
     try {
-      await addSale(newSale);
-      setNewSale({ item: '', quantity: 1, customer: '' });
+      await addMultipleSales(newSales);
+      setNewSales([{ item: '', quantity: 1 }]);
       setCurrentPage(0);
       fetchSalesData(true);
+      setSnackbar({ open: true, message: 'Sales added successfully', severity: 'success' });
     } catch (error) {
-      console.error('Failed to add sale:', error);
-      alert('Failed to add sale');
+      console.error('Failed to add sales:', error);
+      setSnackbar({ open: true, message: 'Failed to add sales. Please try again.', severity: 'error' });
+      if (error.message === 'Authentication required' || (error.response && error.response.status === 401)) {
+        logout();
+      }
     }
   };
 
   const handleAddCustomer = async () => {
     try {
       const addedCustomer = await addCustomer(newCustomer);
-      setNewSale({ ...newSale, customer: addedCustomer.id });
+      setNewSales(newSales.map(sale => ({ ...sale, customer: addedCustomer.id })));
       setNewCustomer({ name: '', phone_number: '' });
       setOpenNewCustomerDialog(false);
+      setSnackbar({ open: true, message: 'Customer added successfully', severity: 'success' });
     } catch (error) {
       console.error('Failed to add customer:', error);
-      alert('Failed to add customer');
+      setSnackbar({ open: true, message: 'Failed to add customer. Please try again.', severity: 'error' });
+      if (error.message === 'Authentication required' || (error.response && error.response.status === 401)) {
+        logout();
+      }
     }
   };
 
   const handleNextPage = () => {
     setCurrentPage(prev => prev + 1);
+    fetchSalesData(false);
   };
 
   const handlePreviousPage = () => {
     setCurrentPage(prev => Math.max(0, prev - 1));
+    fetchSalesData(false);
   };
 
   const handleDateFilterChange = (filter) => {
@@ -122,16 +162,39 @@ const Sales = () => {
         // 'custom' - do nothing, let user select dates
         break;
     }
-    setCurrentPage(0);
+    fetchSalesData(true);
   };
 
-  if (loading && sales.length === 0) return <CircularProgress />;
-  if (error) return <Typography color="error">Error: {error}</Typography>;
+  const handleCloseSnackbar = (event, reason) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setSnackbar({ ...snackbar, open: false });
+  };
 
-  const startIndex = currentPage * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const displayedSales = sales.slice(startIndex, endIndex);
-  const hasMoreSales = endIndex < totalSalesCount;
+  const addNewSaleField = () => {
+    setNewSales([...newSales, { item: '', quantity: 1 }]);
+  };
+
+  const removeSaleField = (index) => {
+    setNewSales(newSales.filter((_, i) => i !== index));
+  };
+
+  const handleSaleChange = (index, field, value) => {
+    const updatedSales = [...newSales];
+    updatedSales[index][field] = value;
+    setNewSales(updatedSales);
+  };
+
+  const filteredSales = useMemo(() => {
+  return sales.slice(currentPage * itemsPerPage, (currentPage + 1) * itemsPerPage);
+}, [sales, currentPage, itemsPerPage]);
+
+  if (!user) return <Typography>Please log in to view sales.</Typography>;
+  if (loading && sales.length === 0) return <CircularProgress />;
+  if (error) return <Alert severity="error">Error: {error}</Alert>;
+
+  const hasMoreSales = filteredSales.length === itemsPerPage;
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={enUS}>
@@ -139,7 +202,7 @@ const Sales = () => {
         <Box sx={{ flexGrow: 1, overflowY: 'auto', mr: 2 }}>
           <Typography variant="h4" gutterBottom>Sales List</Typography>
           <Typography variant="h6" gutterBottom>
-            Total Done: ₦{summary.total_done?.toFixed(2) || '0.00'} | Total Pending: ₦{summary.total_pending?.toFixed(2) || '0.00'}
+            Total Done: {formatCost(summary.total_done)} | Total Pending: {formatCost(summary.total_pending)}
           </Typography>
           <Box sx={{ display: 'flex', mb: 2, alignItems: 'center' }}>
             <FormControl sx={{ minWidth: 120, mr: 2 }}>
@@ -161,6 +224,7 @@ const Sales = () => {
                   onChange={(newDate) => {
                     setStartDate(newDate);
                     setCurrentPage(0);
+                    fetchSalesData(true);
                   }}
                   renderInput={(params) => <TextField {...params} />}
                 />
@@ -170,6 +234,7 @@ const Sales = () => {
                   onChange={(newDate) => {
                     setEndDate(newDate);
                     setCurrentPage(0);
+                    fetchSalesData(true);
                   }}
                   renderInput={(params) => <TextField {...params} sx={{ ml: 2 }} />}
                 />
@@ -189,11 +254,11 @@ const Sales = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {displayedSales.map((sale) => (
+                {filteredSales.map((sale) => (
                   <TableRow key={sale.id}>
                     <TableCell>{sale.item_name}</TableCell>
                     <TableCell>{sale.quantity}</TableCell>
-                    <TableCell>₦{sale.total_amount?.toFixed(2) || '0.00'}</TableCell>
+                    <TableCell>{formatCost(sale.total_amount)}</TableCell>
                     <TableCell>{sale.payment_status}</TableCell>
                     <TableCell>{sale.customer_name}</TableCell>
                     <TableCell>
@@ -213,35 +278,45 @@ const Sales = () => {
             <Button onClick={handleNextPage} disabled={!hasMoreSales}>Next</Button>
           </Box>
           <Typography>
-            Showing {startIndex + 1} - {Math.min(endIndex, totalSalesCount)} of {totalSalesCount} sales
+            Showing {filteredSales.length > 0 ? currentPage * itemsPerPage + 1 : 0} - {Math.min((currentPage + 1) * itemsPerPage, totalSalesCount)} of {totalSalesCount} sales
           </Typography>
         </Box>
         <Box sx={{ width: '300px' }}>
-          <Typography variant="h6" gutterBottom>Add New Sale</Typography>
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Item</InputLabel>
-            <Select
-              value={newSale.item}
-              onChange={(e) => setNewSale({ ...newSale, item: e.target.value })}
-            >
-              {inventoryItems.map((item) => (
-                <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <TextField
-            fullWidth
-            label="Quantity"
-            type="number"
-            value={newSale.quantity}
-            onChange={(e) => setNewSale({ ...newSale, quantity: parseInt(e.target.value) })}
-            margin="normal"
-          />
+          <Typography variant="h6" gutterBottom>Add New Sales</Typography>
+          {newSales.map((sale, index) => (
+            <Box key={index} sx={{ mb: 2 }}>
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Item</InputLabel>
+                <Select
+                  value={sale.item}
+                  onChange={(e) => handleSaleChange(index, 'item', e.target.value)}
+                >
+                  {inventoryItems.map((item) => (
+                    <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                fullWidth
+                label="Quantity"
+                type="number"
+                value={sale.quantity}
+                onChange={(e) => handleSaleChange(index, 'quantity', parseInt(e.target.value))}
+                margin="normal"
+              />
+              <IconButton onClick={() => removeSaleField(index)} color="secondary">
+                <RemoveCircle />
+              </IconButton>
+            </Box>
+          ))}
+          <Button onClick={addNewSaleField} variant="outlined" fullWidth startIcon={<AddCircle />} sx={{ mb: 2 }}>
+            Add Another Item
+          </Button>
           <FormControl fullWidth margin="normal">
             <InputLabel>Customer</InputLabel>
             <Select
-              value={newSale.customer}
-              onChange={(e) => setNewSale({ ...newSale, customer: e.target.value })}
+              value={newSales[0].customer || ''}
+              onChange={(e) => setNewSales(newSales.map(sale => ({ ...sale, customer: e.target.value })))}
             >
               <MenuItem value="">
                 <em>None</em>
@@ -254,13 +329,13 @@ const Sales = () => {
               </MenuItem>
             </Select>
           </FormControl>
-          {newSale.customer === 'new' && (
+          {newSales[0].customer === 'new' && (
             <Button onClick={() => setOpenNewCustomerDialog(true)} fullWidth variant="outlined" sx={{ mt: 1 }}>
               Add New Customer
             </Button>
           )}
-          <Button onClick={handleAddSale} variant="contained" fullWidth sx={{ mt: 2 }}>
-            Add Sale
+          <Button onClick={handleAddSales} variant="contained" fullWidth sx={{ mt: 2 }}>
+            Add Sales
           </Button>
         </Box>
       </Box>
@@ -288,6 +363,15 @@ const Sales = () => {
           <Button onClick={handleAddCustomer}>Add</Button>
         </DialogActions>
       </Dialog>
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </LocalizationProvider>
   );
 };

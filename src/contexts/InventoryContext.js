@@ -1,90 +1,75 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useCallback, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { getInventoryItems, createInventoryItem } from '../services/api';
 import { useAuth } from './AuthContext';
 
 const InventoryContext = createContext();
 
 export const InventoryProvider = ({ children }) => {
-  const [inventoryItems, setInventoryItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const { logout } = useAuth();
+  const { logout, isAuthenticated } = useAuth();
+  const queryClient = useQueryClient();
 
-  const fetchInventoryItems = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await getInventoryItems();
-      console.log('API Response:', response.data);
-      const items = response.data.results || response.data; // Handle both paginated and non-paginated responses
-      const formattedItems = Array.isArray(items) 
+  const {
+    data: inventoryItems = [],
+    isLoading,
+    error,
+    refetch: fetchInventoryItems,
+  } = useQuery('inventoryItems', getInventoryItems, {
+    enabled: false, // We'll manually enable this query
+    onError: (err) => {
+      console.error('Error fetching inventory items:', err);
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+    },
+    select: (data) => {
+      const items = data.results || data;
+      return Array.isArray(items)
         ? items.map(item => ({
             ...item,
             cost: typeof item.cost === 'string' ? parseFloat(item.cost) : item.cost
           }))
         : [];
-      console.log('Formatted Items:', formattedItems);
-      setInventoryItems(formattedItems);
-      setError(null);
-    } catch (err) {
-      console.error('Error fetching inventory items:', err);
-      if (err.response && err.response.status === 401) {
-        logout();
-        setError('Session expired. Please login again.');
-      } else {
-        setError(`Failed to fetch inventory items: ${err.message}`);
-      }
-    } finally {
-      setLoading(false);
+    },
+  });
+
+  // Use useEffect to fetch inventory items when authenticated
+  useEffect(() => {
+    if (isAuthenticated()) {
+      fetchInventoryItems();
     }
-  }, [logout]);
+  }, [isAuthenticated, fetchInventoryItems]);
+
+  const addItemMutation = useMutation(createInventoryItem, {
+    onSuccess: (data) => {
+      queryClient.setQueryData('inventoryItems', (oldData) => [...(oldData || []), data]);
+    },
+    onError: (err) => {
+      console.error('Error adding inventory item:', err);
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+    },
+  });
 
   const addInventoryItem = useCallback(async (newItem) => {
-    try {
-      setLoading(true);
-      const itemToAdd = {
-        ...newItem,
-        cost: typeof newItem.cost === 'string' ? parseFloat(newItem.cost) : newItem.cost
-      };
-      console.log('Adding item:', itemToAdd);
-      const response = await createInventoryItem(itemToAdd);
-      console.log('API Response for new item:', response.data);
-      setInventoryItems(prevItems => {
-        const updatedItems = [...prevItems, response.data];
-        console.log('Updated inventory items:', updatedItems);
-        return updatedItems;
-      });
-      setError(null);
-      return response.data;
-    } catch (err) {
-      console.error('Error adding inventory item:', err);
-      if (err.response && err.response.status === 401) {
-        logout();
-        setError('Session expired. Please login again.');
-      } else {
-        setError(`Failed to add inventory item: ${err.message}`);
-      }
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [logout]);
+    const itemToAdd = {
+      ...newItem,
+      cost: typeof newItem.cost === 'string' ? parseFloat(newItem.cost) : newItem.cost
+    };
+    return addItemMutation.mutateAsync(itemToAdd);
+  }, [addItemMutation]);
 
   const refreshInventory = useCallback(() => {
-    fetchInventoryItems();
-  }, [fetchInventoryItems]);
-
-  useEffect(() => {
-    fetchInventoryItems();
-  }, [fetchInventoryItems]);
-
-  useEffect(() => {
-    console.log('Current inventory items:', inventoryItems);
-  }, [inventoryItems]);
+    if (isAuthenticated()) {
+      queryClient.invalidateQueries('inventoryItems');
+    }
+  }, [queryClient, isAuthenticated]);
 
   return (
     <InventoryContext.Provider value={{ 
       inventoryItems, 
-      loading, 
+      isLoading, 
       error, 
       fetchInventoryItems, 
       addInventoryItem,

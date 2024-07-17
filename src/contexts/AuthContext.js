@@ -1,68 +1,82 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import { setAuthToken, login, getCurrentUser } from '../services/api';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { setAuthToken, login as apiLogin, getCurrentUser, logout as apiLogout } from '../services/api';
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const initializeAuth = async () => {
-      setIsLoading(true);
-      const token = localStorage.getItem('token');
-      if (token) {
-        setAuthToken(token);
-        try {
-          const userData = await getCurrentUser();
-          setUser(userData);
-        } catch (error) {
-          console.error('Failed to get user data:', error);
-          logout();
-        }
-      }
-      setIsLoading(false);
-    };
-    initializeAuth();
-  }, []);
-
-  const loginUser = async (username, password) => {
+  const login = async (username, password) => {
+    setError(null);
     try {
-      const response = await login(username, password);
-      setUser(response.data.user);
-      return response;
+      const data = await apiLogin(username, password);
+      setUser(data.user);
+      return data;
     } catch (error) {
-      console.error('Login failed:', error);
+      setError(error.response?.data?.detail || error.message);
       throw error;
     }
   };
 
-  const logout = () => {
-    setAuthToken(null);
-    setUser(null);
-  };
+  const logout = useCallback(async () => {
+    try {
+      await apiLogout();
+    } catch (error) {
+      console.error('Logout failed:', error);
+    } finally {
+      setAuthToken(null);
+      setUser(null);
+    }
+  }, []);
 
-  const isAuthenticated = () => !!user;
-
-  const getUser = async () => {
-    if (!user) {
+  const checkAuth = useCallback(async () => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      setIsLoading(true);
       try {
+        setAuthToken(token);
         const userData = await getCurrentUser();
         setUser(userData);
-        return userData;
       } catch (error) {
         console.error('Failed to get user data:', error);
-        return null;
+        await logout();
+      } finally {
+        setIsLoading(false);
       }
+    } else {
+      setIsLoading(false);
     }
-    return user;
-  };
+  }, [logout]);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
+  const isAuthenticated = useCallback(() => {
+    return !!user && !!localStorage.getItem('token');
+  }, [user]);
 
   return (
-    <AuthContext.Provider value={{ user, loginUser, logout, isAuthenticated, getUser, isLoading }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      login, 
+      logout, 
+      isLoading, 
+      error, 
+      checkAuth,
+      isAuthenticated 
+    }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};

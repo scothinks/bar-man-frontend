@@ -1,36 +1,58 @@
 import axios from 'axios';
 
-const API_URL = '/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 
 const api = axios.create({
   baseURL: API_URL,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
+  maxContentLength: Infinity,
+  maxBodyLength: Infinity,
 });
 
 export const setAuthToken = (token) => {
   if (token) {
     api.defaults.headers.common['Authorization'] = `Token ${token}`;
     localStorage.setItem('token', token);
-    console.log('Token set in localStorage and API headers');
   } else {
     delete api.defaults.headers.common['Authorization'];
     localStorage.removeItem('token');
-    console.log('Token removed from localStorage and API headers');
+  }
+};
+
+const getStoredToken = () => {
+  try {
+    return localStorage.getItem('token');
+  } catch (error) {
+    console.error('Error getting token from localStorage:', error);
+    return null;
   }
 };
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers['Authorization'] = `Token ${token}`;
-      console.log('Token attached to request:', token);
-    } else {
-      console.log('No token found in localStorage');
+    try {
+      const token = getStoredToken();
+      if (token) {
+        config.headers['Authorization'] = `Token ${token}`;
+        console.log('Token attached to request');
+      } else {
+        console.log('No token found');
+      }
+    } catch (error) {
+      console.error('Error getting stored token:', error);
     }
-    console.log('Request config:', config);
+
+    console.log('Full request headers:', JSON.stringify(config.headers, null, 2));
+    console.log(`Request URL: ${config.url}`);
+    console.log(`Request Method: ${config.method}`);
+
+    if (config.method === 'post' || config.method === 'put') {
+      console.log('Request Body:', JSON.stringify(config.data, null, 2));
+    }
+
     return config;
   },
   (error) => {
@@ -41,58 +63,54 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    console.error('API Error:', error);
+  async (error) => {
     if (error.response) {
-      console.error('Error data:', error.response.data);
-      console.error('Error status:', error.response.status);
-      console.error('Error headers:', error.response.headers);
+      console.error(`Error ${error.response.status}: ${error.response.statusText}`);
+      if (error.response.status === 401) {
+        console.log('Unauthorized access - logging out');
+        setAuthToken(null);
+        window.location.href = '/login';
+      }
     } else if (error.request) {
-      console.error('Error request:', error.request);
+      console.error('No response received:', error.request);
     } else {
-      console.error('Error message:', error.message);
-    }
-    if (error.response && error.response.status === 401) {
-      console.error('Received 401 Unauthorized response');
-      setAuthToken(null);
-      window.location = '/login';
+      console.error('Error setting up request:', error.message);
     }
     return Promise.reject(error);
   }
 );
 
-export const initializeApi = () => {
-  console.log('Initializing API...');
-  const token = localStorage.getItem('token');
-  if (token) {
-    console.log('Token found in localStorage:', token);
-    setAuthToken(token);
-  } else {
-    console.log('No token found in localStorage');
-  }
-};
-
-// Authentication
 export const login = async (username, password) => {
   try {
-    console.log('Attempting login for user:', username);
+    console.log('Attempting login for user:', { username, password });
     const response = await api.post('/token-auth/', { username, password });
     console.log('Login response:', response);
 
     if (response.data && response.data.token) {
       console.log('Token received:', response.data.token);
       setAuthToken(response.data.token);
-      return response;
+      return response.data;
     } else {
       console.error('Login successful but no token received');
       throw new Error('No token received from server');
     }
   } catch (error) {
     console.error('Login error:', error);
-    if (error.response) {
-      console.error('Error response:', error.response.data);
-      console.error('Error status:', error.response.status);
-    }
+    console.error('Error response:', error.response);
+    throw error;
+  }
+};
+
+export const getCurrentUser = async () => {
+  const token = getStoredToken();
+  if (!token) {
+    throw new Error('No authentication token found');
+  }
+  try {
+    const response = await api.get('/users/me/');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching current user:', error);
     throw error;
   }
 };
@@ -102,68 +120,58 @@ export const logout = () => {
   setAuthToken(null);
 };
 
-export const validateToken = async () => {
+// Helper function for API calls
+const apiCall = async (method, url, data = null, params = null) => {
   try {
-    console.log('Validating token...');
-    const response = await api.get('/users/me/');
-    console.log('Token validation successful:', response);
-    return true;
+    const response = await api({
+      method,
+      url,
+      data,
+      params,
+    });
+    return response.data;
   } catch (error) {
-    console.error('Token validation failed:', error);
-    if (error.response && error.response.status === 401) {
-      setAuthToken(null);
-      return false;
-    }
+    console.error(`API call error (${method} ${url}):`, error);
     throw error;
   }
 };
 
 // Inventory operations
-export const getInventoryItems = (params = {}) => {
-  const queryString = new URLSearchParams(params).toString();
-  return api.get(`/inventoryitems/${queryString ? `?${queryString}` : ''}`);
+export const getInventoryItems = async (params) => {
+  try {
+    const response = await apiCall('get', '/inventory/', null, params);
+    console.log('Initial inventory response:', response);
+    if (response && response.inventoryitems) {
+      const itemsResponse = await api.get(response.inventoryitems);
+      console.log('Inventory items response:', itemsResponse.data);
+      return itemsResponse.data;
+    } else {
+      console.error('Unexpected inventory response format:', response);
+      return [];
+    }
+  } catch (error) {
+    console.error('Error fetching inventory items:', error);
+    throw error;
+  }
 };
-export const createInventoryItem = (itemData) => api.post('/inventoryitems/', itemData);
-export const updateInventoryItem = (id, itemData) => api.put(`/inventoryitems/${id}/`, itemData);
-export const deleteInventoryItem = (id) => api.delete(`/inventoryitems/${id}/`);
+export const createInventoryItem = (itemData) => apiCall('post', '/inventory/', itemData);
+export const updateInventoryItem = (id, itemData) => apiCall('put', `/inventory/${id}/`, itemData);
+export const deleteInventoryItem = (id) => apiCall('delete', `/inventory/${id}/`);
 
 // Sales operations
-export const getSales = (params = {}) => {
-  const queryString = new URLSearchParams(params).toString();
-  return api.get(`/sales/${queryString ? `?${queryString}` : ''}`).then(response => {
-    console.log('getSales response:', response.data);
-    return response;
-  }).catch(error => {
-    console.error('getSales error:', error);
-    throw error;
-  });
-};
-export const createSale = (saleData) => api.post('/sales/', saleData);
-export const updateSalePaymentStatus = (saleId, status) => api.patch(`/sales/${saleId}/update_payment_status/`, { payment_status: status });
-export const allocateSaleToCustomer = (saleId, customerId) => api.post(`/sales/${saleId}/allocate_to_customer/`, { customer_id: customerId });
-const fetchSales = async (page = 1, startDate = null, endDate = null) => {
-  let url = `/api/sales/?page=${page}`;
-  if (startDate) url += `&start_date=${startDate.toISOString().split('T')[0]}`;
-  if (endDate) url += `&end_date=${endDate.toISOString().split('T')[0]}`;
-  const response = await api.get(url);
-  return response.data;
-};
+export const getSales = (params) => apiCall('get', '/sales/', null, params);
+export const createSale = (saleData) => apiCall('post', '/sales/', saleData);
+export const createMultipleSales = (salesData) => apiCall('post', '/sales/multiple/', salesData);
+export const updateSalePaymentStatus = (saleId, status) => apiCall('patch', `/sales/${saleId}/update_payment_status/`, { payment_status: status });
 
 // Customer operations
-export const getCustomers = (params = {}) => {
-  const queryString = new URLSearchParams(params).toString();
-  return api.get(`/customers/${queryString ? `?${queryString}` : ''}`);
-};
-export const createCustomer = (customerData) => api.post('/customers/', customerData);
-export const getCustomerTabs = (params = {}) => {
-  const queryString = new URLSearchParams(params).toString();
-  return api.get(`/customers/tabs/${queryString ? `?${queryString}` : ''}`);
-};
-export const createCustomerTab = (tabData) => api.post('/customers/tabs/', tabData);
+export const getCustomers = (params) => apiCall('get', '/customers/', null, params);
+export const createCustomer = (customerData) => apiCall('post', '/customers/', customerData);
+export const getCustomerTabs = (params) => apiCall('get', '/customers/tabs/', null, params);
+export const createCustomerTab = (tabData) => apiCall('post', '/customers/tabs/', tabData);
 
-// User management operations (for admin)
-export const getUsers = () => api.get('/users/');
-export const createUser = (userData) => api.post('/users/', userData);
-export const getCurrentUser = () => api.get('/users/me/');
+// User management
+export const getUsers = () => apiCall('get', '/users/');
+export const createUser = (userData) => apiCall('post', '/users/', userData);
 
 export default api;

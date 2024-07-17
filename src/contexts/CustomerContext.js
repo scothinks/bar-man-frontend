@@ -1,67 +1,77 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { getCustomers, createCustomer, getCustomerTabs, createCustomerTab } from '../services/api';
+import { useAuth } from './AuthContext';
 
 const CustomerContext = createContext();
 
 export const CustomerProvider = ({ children }) => {
-  const [customers, setCustomers] = useState([]);
-  const [customerTabs, setCustomerTabs] = useState([]);
-  const [error, setError] = useState(null);
+  const queryClient = useQueryClient();
+  const { logout, isAuthenticated } = useAuth();
+  
 
-  const fetchCustomers = useCallback(async () => {
-    try {
-      const response = await getCustomers();
-      setCustomers(Array.isArray(response.data) ? response.data : []);
-      setError(null);
-    } catch (error) {
-      console.error('Error fetching customers:', error);
-      setCustomers([]);
-      setError('Failed to fetch customers');
-    }
-  }, []);
+  const {
+    data: customers = [],
+    isLoading: customersLoading,
+    error: customersError,
+  } = useQuery('customers', getCustomers, {
+    enabled: isAuthenticated(),
+    onError: (err) => {
+      console.error('Error fetching customers:', err);
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+    },
+  });
 
-  const fetchCustomerTabs = useCallback(async () => {
-    try {
-      const response = await getCustomerTabs();
-      setCustomerTabs(Array.isArray(response.data) ? response.data : []);
-      setError(null);
-    } catch (error) {
-      console.error('Error fetching customer tabs:', error);
-      setCustomerTabs([]);
-      setError('Failed to fetch customer tabs');
-    }
-  }, []);
+  const {
+    data: customerTabs = [],
+    isLoading: customerTabsLoading,
+    error: customerTabsError,
+  } = useQuery('customerTabs', getCustomerTabs, {
+    enabled: isAuthenticated(),
+    onError: (err) => {
+      console.error('Error fetching customer tabs:', err);
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+    },
+  });
 
-  useEffect(() => {
-    fetchCustomers();
-    fetchCustomerTabs();
-  }, [fetchCustomers, fetchCustomerTabs]);
+  const addCustomerMutation = useMutation(createCustomer, {
+    onSuccess: (newCustomer) => {
+      queryClient.setQueryData('customers', (oldCustomers) => [...(oldCustomers || []), newCustomer]);
+    },
+    onError: (err) => {
+      console.error('Error adding customer:', err);
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+    },
+  });
 
-  const addCustomer = async (customerData) => {
-    try {
-      const response = await createCustomer(customerData);
-      setCustomers(prevCustomers => [...prevCustomers, response.data]);
-      setError(null);
-      return response.data;
-    } catch (error) {
-      console.error('Error adding customer:', error);
-      setError('Failed to add customer');
-      throw error;
-    }
-  };
+  const addCustomerTabMutation = useMutation(createCustomerTab, {
+    onSuccess: (newTab) => {
+      queryClient.setQueryData('customerTabs', (oldTabs) => [...(oldTabs || []), newTab]);
+    },
+    onError: (err) => {
+      console.error('Error adding customer tab:', err);
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+    },
+  });
 
-  const addCustomerTab = async (tabData) => {
-    try {
-      const response = await createCustomerTab(tabData);
-      setCustomerTabs(prevTabs => [...prevTabs, response.data]);
-      setError(null);
-      return response.data;
-    } catch (error) {
-      console.error('Error adding customer tab:', error);
-      setError('Failed to add customer tab');
-      throw error;
-    }
-  };
+  const addCustomer = useCallback((customerData) => addCustomerMutation.mutateAsync(customerData), [addCustomerMutation]);
+  const addCustomerTab = useCallback((tabData) => addCustomerTabMutation.mutateAsync(tabData), [addCustomerTabMutation]);
+
+  const fetchCustomers = useCallback(() => {
+    queryClient.invalidateQueries('customers');
+  }, [queryClient]);
+
+  const fetchCustomerTabs = useCallback(() => {
+    queryClient.invalidateQueries('customerTabs');
+  }, [queryClient]);
 
   return (
     <CustomerContext.Provider value={{ 
@@ -71,7 +81,8 @@ export const CustomerProvider = ({ children }) => {
       addCustomerTab, 
       fetchCustomers, 
       fetchCustomerTabs,
-      error 
+      error: customersError || customerTabsError,
+      isLoading: customersLoading || customerTabsLoading,
     }}>
       {children}
     </CustomerContext.Provider>

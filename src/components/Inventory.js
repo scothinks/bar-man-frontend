@@ -1,31 +1,150 @@
-import React, { useState, useEffect } from 'react';
-import { useInventory } from '../contexts/InventoryContext';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { useAuth } from '../contexts/AuthContext';
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, Button, CircularProgress, TextField, Dialog, DialogActions, DialogContent, DialogTitle, Alert } from '@mui/material';
+import { getInventoryItems, createInventoryItem, updateInventoryItem, deleteInventoryItem } from '../services/api';
+import { 
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, 
+  Button, CircularProgress, TextField, Dialog, DialogActions, DialogContent, DialogTitle, 
+  Alert, Box, Tabs, Tab, IconButton, Snackbar
+} from '@mui/material';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 const formatCost = (cost) => {
   if (cost === null || cost === undefined) return 'N/A';
   const numCost = typeof cost === 'string' ? parseFloat(cost) : cost;
-  return isNaN(numCost) ? 'N/A' : `₦${numCost.toFixed(2)}`;
+  if (isNaN(numCost)) return 'N/A';
+  return `₦${numCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 const Inventory = () => {
-  const { inventoryItems, loading, error, fetchInventoryItems, addInventoryItem } = useInventory();
-  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { user, logout } = useAuth();
   const [openDialog, setOpenDialog] = useState(false);
+  const [dialogMode, setDialogMode] = useState('add');
+  const [selectedItem, setSelectedItem] = useState(null);
   const [newItem, setNewItem] = useState({ name: '', cost: '', quantity: '', low_inventory_threshold: '' });
   const [addItemError, setAddItemError] = useState('');
+  const [currentPage, setCurrentPage] = useState(0);
+  const [searchLetter, setSearchLetter] = useState('');
+  const [tabValue, setTabValue] = useState(0);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+
+  const itemsPerPage = 10;
 
   useEffect(() => {
-    fetchInventoryItems();
-  }, [fetchInventoryItems]);
+    if (user) {
+      queryClient.invalidateQueries('inventoryItems');
+    }
+  }, [user, queryClient]);
+
+  const { data: inventoryItems = { results: [] }, isLoading, error } = useQuery(
+    ['inventoryItems', currentPage, itemsPerPage, searchLetter, user?.id],
+    () => getInventoryItems({ page: currentPage, limit: itemsPerPage, search: searchLetter }),
+    {
+      enabled: !!user,
+      retry: 1,
+      onSuccess: (data) => {
+        console.log('Received inventory data:', JSON.stringify(data, null, 2));
+        if (!data || !data.results || !Array.isArray(data.results)) {
+          console.warn('Received inventory data is not in the expected format');
+        }
+      },
+      onError: (err) => {
+        console.error('Error fetching inventory items:', err);
+        setSnackbar({ open: true, message: 'Failed to fetch inventory items. Please try again.', severity: 'error' });
+        if (err.response && err.response.status === 401) {
+          logout();
+        }
+      },
+    }
+  );
 
   useEffect(() => {
-    console.log('Inventory component rendered. Items:', JSON.stringify(inventoryItems, null, 2));
+    console.log('inventoryItems:', inventoryItems);
   }, [inventoryItems]);
 
-  const handleOpenDialog = () => {
-    console.log('Open dialog button clicked');
+  const addItemMutation = useMutation(createInventoryItem, {
+    onSuccess: () => {
+      queryClient.invalidateQueries('inventoryItems');
+      handleCloseDialog();
+      setSnackbar({ open: true, message: 'Item added successfully', severity: 'success' });
+    },
+    onError: (error) => {
+      console.error("Error adding item:", error);
+      setAddItemError('Failed to add item. Please try again.');
+      setSnackbar({ open: true, message: 'Failed to add item. Please try again.', severity: 'error' });
+      if (error.response && error.response.status === 401) {
+        logout();
+      }
+    }
+  });
+
+  const updateItemMutation = useMutation(
+    ({ id, ...data }) => updateInventoryItem(id, data),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries('inventoryItems');
+        handleCloseDialog();
+        setSnackbar({ open: true, message: 'Item updated successfully', severity: 'success' });
+      },
+      onError: (error) => {
+        console.error("Error updating item:", error);
+        setAddItemError('Failed to update item. Please try again.');
+        setSnackbar({ open: true, message: 'Failed to update item. Please try again.', severity: 'error' });
+        if (error.response && error.response.status === 401) {
+          logout();
+        }
+      }
+    }
+  );
+
+  const deleteItemMutation = useMutation(deleteInventoryItem, {
+    onSuccess: () => {
+      queryClient.invalidateQueries('inventoryItems');
+      setSnackbar({ open: true, message: 'Item deleted successfully', severity: 'success' });
+    },
+    onError: (error) => {
+      console.error("Error deleting item:", error);
+      setSnackbar({ open: true, message: 'Failed to delete item. Please try again.', severity: 'error' });
+      if (error.response && error.response.status === 401) {
+        logout();
+      }
+    }
+  });
+
+  const filteredItems = useMemo(() => {
+    console.log('Filtering items:', inventoryItems);
+    if (!inventoryItems || !inventoryItems.results || !Array.isArray(inventoryItems.results)) {
+      console.warn('inventoryItems is not in the expected format:', inventoryItems);
+      return [];
+    }
+    return inventoryItems.results.filter(item => 
+      searchLetter === '' || (item.name && item.name.toLowerCase().startsWith(searchLetter.toLowerCase()))
+    );
+  }, [inventoryItems, searchLetter]);
+  
+  const lowInventoryItems = useMemo(() => {
+    if (!inventoryItems || !inventoryItems.results || !Array.isArray(inventoryItems.results)) {
+      console.warn('inventoryItems is not in the expected format:', inventoryItems);
+      return [];
+    }
+    return inventoryItems.results.filter(item => item.quantity <= item.low_inventory_threshold);
+  }, [inventoryItems]);
+
+  const paginatedItems = useMemo(() => {
+    const startIndex = currentPage * itemsPerPage;
+    return filteredItems.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredItems, currentPage, itemsPerPage]);
+
+  const handleOpenDialog = (mode, item = null) => {
+    setDialogMode(mode);
+    setSelectedItem(item);
+    if (mode === 'add') {
+      setNewItem({ name: '', cost: '', quantity: '', low_inventory_threshold: '' });
+    } else if (mode === 'edit' && item) {
+      setNewItem({ ...item });
+    }
     setOpenDialog(true);
     setAddItemError('');
   };
@@ -39,70 +158,121 @@ const Inventory = () => {
     setNewItem({ ...newItem, [e.target.name]: e.target.value });
   };
 
-  const handleAddItem = async () => {
-    try {
-      console.log('Adding new item:', newItem);
-      const addedItem = await addInventoryItem(newItem);
-      console.log('Item added:', addedItem);
-      handleCloseDialog();
-      setNewItem({ name: '', cost: '', quantity: '', low_inventory_threshold: '' });
-      fetchInventoryItems(); // Refresh the inventory list
-    } catch (error) {
-      console.error("Error adding item:", error);
-      setAddItemError('Failed to add item. Please try again.');
+  const handleSaveItem = async () => {
+    if (dialogMode === 'add') {
+      addItemMutation.mutate(newItem);
+    } else if (dialogMode === 'edit') {
+      updateItemMutation.mutate({ id: selectedItem.id, ...newItem });
     }
   };
 
-  if (loading) return <CircularProgress />;
-  if (error) return <Alert severity="error">Error: {error}</Alert>;
+  const handleDeleteItem = async (itemId) => {
+    if (window.confirm('Are you sure you want to delete this item?')) {
+      deleteItemMutation.mutate(itemId);
+    }
+  };
 
-  console.log('Rendering inventory items:', JSON.stringify(inventoryItems, null, 2));
+  const handleNextPage = () => {
+    setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filteredItems.length / itemsPerPage) - 1));
+  };
+
+  const handlePreviousPage = () => {
+    setCurrentPage(prev => Math.max(0, prev - 1));
+  };
+
+  const handleTabChange = (event, newValue) => {
+    setTabValue(newValue);
+  };
+
+  const handleCloseSnackbar = (event, reason) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setSnackbar({ ...snackbar, open: false });
+  };
+
+  if (!user) return <Typography>Please log in to view inventory.</Typography>;
+  if (isLoading) return <CircularProgress />;
+  if (error) return <Alert severity="error">Error: {error.message}</Alert>;
+
+  if (!inventoryItems || !inventoryItems.results || !Array.isArray(inventoryItems.results)) {
+    if (isLoading) {
+      return <CircularProgress />;
+    }
+    return <Alert severity="warning">No inventory data available or data is in an unexpected format.</Alert>;
+  }
 
   return (
-    <div style={{ position: 'relative', zIndex: 1 }}>
+    <Box>
       <Typography variant="h4" gutterBottom>Inventory Items</Typography>
+      
+      <Tabs value={tabValue} onChange={handleTabChange}>
+        <Tab label="All Items" />
+        <Tab label="Low Inventory" />
+      </Tabs>
+
       {user && user.can_update_inventory && (
         <Button 
           variant="contained" 
           color="primary" 
-          onClick={handleOpenDialog} 
-          style={{ marginBottom: '20px', zIndex: 2 }}
+          onClick={() => handleOpenDialog('add')} 
+          style={{ margin: '20px 0' }}
         >
           Add New Item
         </Button>
       )}
-      {(!inventoryItems || inventoryItems.length === 0) ? (
-        <Typography>No inventory items available (Total items: {inventoryItems ? inventoryItems.length : 0})</Typography>
-      ) : (
-        <TableContainer component={Paper} key={inventoryItems.length}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell align="right">Quantity</TableCell>
-                <TableCell align="right">Cost</TableCell>
-                <TableCell align="right">Low Inventory Threshold</TableCell>
+
+      <TextField
+        label="Search by first letter"
+        value={searchLetter}
+        onChange={(e) => setSearchLetter(e.target.value)}
+        style={{ marginLeft: '20px' }}
+      />
+
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Name</TableCell>
+              <TableCell align="right">Quantity</TableCell>
+              <TableCell align="right">Cost</TableCell>
+              <TableCell align="right">Low Inventory Threshold</TableCell>
+              <TableCell align="right">Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {(tabValue === 0 ? paginatedItems : lowInventoryItems).map(item => (
+              <TableRow key={item.id}>
+                <TableCell component="th" scope="row">{item.name}</TableCell>
+                <TableCell align="right">{item.quantity}</TableCell>
+                <TableCell align="right">{formatCost(item.cost)}</TableCell>
+                <TableCell align="right">{item.low_inventory_threshold}</TableCell>
+                <TableCell align="right">
+                  <IconButton onClick={() => handleOpenDialog('edit', item)}>
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton onClick={() => handleDeleteItem(item.id)}>
+                    <DeleteIcon />
+                  </IconButton>
+                </TableCell>
               </TableRow>
-            </TableHead>
-            <TableBody>
-              {inventoryItems.map(item => (
-                <TableRow key={item.id}>
-                  <TableCell component="th" scope="row">{item.name}</TableCell>
-                  <TableCell align="right">{item.quantity}</TableCell>
-                  <TableCell align="right">{formatCost(item.cost)}</TableCell>
-                  <TableCell align="right">{item.low_inventory_threshold}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {tabValue === 0 && (
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
+          <Button onClick={handlePreviousPage} disabled={currentPage === 0}>Previous</Button>
+          <Button onClick={handleNextPage} disabled={(currentPage + 1) * itemsPerPage >= filteredItems.length}>Next</Button>
+        </Box>
       )}
+
       <Dialog 
         open={openDialog} 
         onClose={handleCloseDialog}
-        disableEscapeKeyDown={false}
       >
-        <DialogTitle>Add New Inventory Item</DialogTitle>
+        <DialogTitle>{dialogMode === 'add' ? 'Add New Inventory Item' : 'Edit Inventory Item'}</DialogTitle>
         <DialogContent>
           {addItemError && <Alert severity="error" sx={{ mb: 2 }}>{addItemError}</Alert>}
           <TextField
@@ -147,12 +317,22 @@ const Inventory = () => {
           <Button onClick={handleCloseDialog} color="primary">
             Cancel
           </Button>
-          <Button onClick={handleAddItem} color="primary">
-            Add Item
+          <Button onClick={handleSaveItem} color="primary">
+            {dialogMode === 'add' ? 'Add Item' : 'Save Changes'}
           </Button>
         </DialogActions>
       </Dialog>
-    </div>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Box>
   );
 };
 

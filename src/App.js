@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';  
-import { initializeApi } from './services/api';
+import React from 'react';
+import { QueryClient, QueryClientProvider } from 'react-query';
+import { ReactQueryDevtools } from 'react-query/devtools';
 import { BrowserRouter as Router, Route, Routes, Link, Navigate } from 'react-router-dom';
-import { AppBar, Toolbar, Button, Typography, Box, Container, CircularProgress } from '@mui/material';
+import { AppBar, Toolbar, Button, Typography, Box, Container, CircularProgress, Snackbar } from '@mui/material';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SalesProvider } from './contexts/SalesContext';
 import { CustomerProvider } from './contexts/CustomerContext';
@@ -11,10 +12,13 @@ import Sales from './components/Sales';
 import CustomerTabs from './components/CustomerTabs';
 import AdminManagement from './components/AdminManagement';
 import Login from './components/Login';
-
+import ErrorBoundary from './components/ErrorBoundary';
+import useNetworkStatus from './hooks/useNetworkStatus';
 
 const Navigation = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, isLoading } = useAuth();
+
+  if (isLoading) return null;
 
   return (
     <AppBar position="static">
@@ -43,41 +47,71 @@ const Navigation = () => {
   );
 };
 
-const PrivateRoute = ({ children }) => {
-  const { user, isLoading } = useAuth();
-  
-  if (isLoading) {
-    return <CircularProgress />;
-  }
-  
-  return user ? children : <Navigate to="/login" />;
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
+
+const NetworkStatusAlert = () => {
+  const isOnline = useNetworkStatus();
+  return (
+    <Snackbar
+      anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      open={!isOnline}
+      message="You are offline. Some features may be unavailable."
+    />
+  );
 };
 
 const App = () => {
-  useEffect(() => {
-    initializeApi();
-  }, []);
-
   return (
-    <AuthProvider>
-      <InventoryProvider>
-        <CustomerProvider>
-          <Router>
-            <Navigation />
-            <Container>
-              <Routes>
-                <Route path="/login" element={<Login />} />
-                <Route path="/" element={<PrivateRoute><Inventory /></PrivateRoute>} />
-                <Route path="/sales" element={<PrivateRoute><SalesProvider><Sales /></SalesProvider></PrivateRoute>} />
-                <Route path="/customer-tabs" element={<PrivateRoute><CustomerTabs /></PrivateRoute>} />
-                <Route path="/admin" element={<PrivateRoute><AdminManagement /></PrivateRoute>} />
-              </Routes>
-            </Container>
-          </Router>
-        </CustomerProvider>
-      </InventoryProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <InventoryProvider>
+            <CustomerProvider>
+              <Router>
+                <Navigation />
+                <Container>
+                  <Routes>
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/" element={<PrivateRoute><Inventory /></PrivateRoute>} />
+                    <Route path="/sales" element={<PrivateRoute><SalesProvider><Sales /></SalesProvider></PrivateRoute>} />
+                    <Route path="/customer-tabs" element={<PrivateRoute><CustomerTabs /></PrivateRoute>} />
+                    <Route path="/admin" element={<PrivateRoute><AdminManagement /></PrivateRoute>} />
+                  </Routes>
+                </Container>
+                <NetworkStatusAlert />
+              </Router>
+            </CustomerProvider>
+          </InventoryProvider>
+        </AuthProvider>
+        <ReactQueryDevtools />
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
+};
+
+const PrivateRoute = ({ children }) => {
+  const { user, isLoading, error, checkAuth } = useAuth();
+
+  React.useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
+  if (isLoading) {
+    return <CircularProgress />;
+  }
+
+  if (error) {
+    return <div>Error: {error}</div>;
+  }
+
+  return user ? children : <Navigate to="/login" />;
 };
 
 export default App;

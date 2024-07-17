@@ -1,160 +1,119 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { createSale, updateSalePaymentStatus, getCustomers, createCustomer, createCustomerTab, getSales } from '../services/api';
+import React, { createContext, useContext, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from 'react-query';
+import { createMultipleSales, updateSalePaymentStatus, getCustomers, createCustomer, createCustomerTab, getSales } from '../services/api';
+import { useAuth } from './AuthContext';
 
 const SalesContext = createContext();
 
 export const SalesProvider = ({ children }) => {
-  const [sales, setSales] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [summary, setSummary] = useState({ total_done: 0, total_pending: 0 });
-  const [nextPage, setNextPage] = useState(null);
-  const [previousPage, setPreviousPage] = useState(null);
-  const [totalCount, setTotalCount] = useState(0);
+  const queryClient = useQueryClient();
+  const { logout, isAuthenticated } = useAuth();
 
-  const fetchCustomers = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await getCustomers();
-      setCustomers(Array.isArray(response.data) ? response.data : []);
-      setError(null);
-    } catch (err) {
-      setError('Failed to fetch customers');
-      console.error('Error fetching customers:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const fetchSales = useCallback(async (filters = {}, reset = false) => {
-    setLoading(true);
-    try {
-      const response = await getSales(filters);
-      console.log('Fetched sales data:', response.data);
-      setSales(prevSales => reset ? response.data.sales : [...prevSales, ...response.data.sales]);
-      setSummary(response.data.summary || { total_done: 0, total_pending: 0 });
-      setNextPage(response.data.next);
-      setPreviousPage(response.data.previous);
-      setTotalCount(response.data.count);
-      setError(null);
-    } catch (err) {
+  const {
+    data: salesData = { sales: [], summary: { total_done: 0, total_pending: 0 }, count: 0 },
+    isLoading: salesLoading,
+    error: salesError,
+    refetch: refetchSales,
+  } = useQuery(['sales'], () => getSales({ limit: 5, page: 1 }), {
+    enabled: isAuthenticated(),
+    onError: (err) => {
       console.error('Error fetching sales:', err);
-      setError('Failed to fetch sales');
-      setSales([]);
-      setSummary({ total_done: 0, total_pending: 0 });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const loadMoreSales = useCallback(async () => {
-    if (nextPage) {
-      setLoading(true);
-      try {
-        const response = await getSales({ page: new URL(nextPage).searchParams.get('page') });
-        setSales(prevSales => [...prevSales, ...response.data.sales]);
-        setNextPage(response.data.next);
-        setPreviousPage(response.data.previous);
-        setTotalCount(response.data.count);
-      } catch (err) {
-        console.error('Error loading more sales:', err);
-        setError('Failed to load more sales');
-      } finally {
-        setLoading(false);
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
       }
+    },
+  });
+
+  const {
+    data: customers = [],
+    isLoading: customersLoading,
+    error: customersError,
+  } = useQuery(['customers'], getCustomers, {
+    enabled: isAuthenticated(),
+    onError: (err) => {
+      console.error('Error fetching customers:', err);
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+    },
+  });
+
+  const addMultipleSalesMutation = useMutation(createMultipleSales, {
+    onSuccess: () => {
+      queryClient.invalidateQueries('sales');
+    },
+    onError: (err) => {
+      console.error('Error adding sales:', err);
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+    },
+  });
+
+  const updatePaymentStatusMutation = useMutation(
+    ({ saleId, status }) => updateSalePaymentStatus(saleId, status),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries('sales');
+      },
+      onError: (err) => {
+        console.error('Error updating payment status:', err);
+        if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+          logout();
+        }
+      },
     }
-  }, [nextPage]);
+  );
 
-  useEffect(() => {
-    fetchCustomers();
-    fetchSales({}, true);
-  }, [fetchCustomers, fetchSales]);
-
-  const addSale = useCallback(async (saleData) => {
-    setLoading(true);
-    try {
-      const response = await createSale(saleData);
-      await fetchSales({}, true); // Refresh sales data after adding a new sale
-      setError(null);
-      return response.data;
-    } catch (err) {
-      console.error('Error adding sale:', err);
-      setError('Failed to add sale');
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchSales]);
-
-  const updatePaymentStatus = useCallback(async (saleId, status) => {
-    setLoading(true);
-    try {
-      const response = await updateSalePaymentStatus(saleId, status);
-      await fetchSales({}, true); // Refresh sales data after updating payment status
-      setError(null);
-      return response.data;
-    } catch (err) {
-      console.error('Error updating payment status:', err);
-      setError('Failed to update payment status');
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchSales]);
-
-  const addCustomer = useCallback(async (customerData) => {
-    setLoading(true);
-    try {
-      const response = await createCustomer(customerData);
-      setCustomers(prevCustomers => Array.isArray(prevCustomers) ? [...prevCustomers, response.data] : [response.data]);
-      setError(null);
-      return response.data;
-    } catch (err) {
+  const addCustomerMutation = useMutation(createCustomer, {
+    onSuccess: (newCustomer) => {
+      queryClient.setQueryData('customers', (oldCustomers) => [...(oldCustomers || []), newCustomer]);
+    },
+    onError: (err) => {
       console.error('Error adding customer:', err);
-      setError('Failed to add customer');
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+    },
+  });
 
-  const addCustomerTab = useCallback(async (tabData) => {
-    setLoading(true);
-    try {
-      const response = await createCustomerTab(tabData);
-      setError(null);
-      return response.data;
-    } catch (err) {
+  const addCustomerTabMutation = useMutation(createCustomerTab, {
+    onError: (err) => {
       console.error('Error creating customer tab:', err);
-      setError('Failed to create customer tab');
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+    },
+  });
 
-  const refreshSales = useCallback((filters = {}) => {
-    fetchSales(filters, true);
-  }, [fetchSales]);
+  const addMultipleSales = useCallback((salesData) => addMultipleSalesMutation.mutateAsync(salesData), [addMultipleSalesMutation]);
+  const updatePaymentStatus = useCallback((saleId, status) => updatePaymentStatusMutation.mutateAsync({ saleId, status }), [updatePaymentStatusMutation]);
+  const addCustomer = useCallback((customerData) => addCustomerMutation.mutateAsync(customerData), [addCustomerMutation]);
+  const addCustomerTab = useCallback((tabData) => addCustomerTabMutation.mutateAsync(tabData), [addCustomerTabMutation]);
+
+  const refreshSales = useCallback(() => {
+    queryClient.invalidateQueries('sales');
+  }, [queryClient]);
+
+  const refreshCustomers = useCallback(() => {
+    queryClient.invalidateQueries('customers');
+  }, [queryClient]);
 
   return (
     <SalesContext.Provider value={{ 
-      sales, 
-      customers, 
-      loading, 
-      error, 
-      summary,
-      addSale, 
-      updatePaymentStatus, 
-      fetchCustomers,
-      fetchSales,
+      sales: salesData.sales,
+      customers,
+      loading: salesLoading || customersLoading,
+      error: salesError || customersError,
+      summary: salesData.summary,
+      addMultipleSales,
+      updatePaymentStatus,
+      fetchCustomers: refreshCustomers,
+      fetchSales: refetchSales,
       addCustomer,
       addCustomerTab,
       refreshSales,
-      loadMoreSales,
-      hasMoreSales: !!nextPage,
-      totalSalesCount: totalCount
+      totalSalesCount: salesData.count,
     }}>
       {children}
     </SalesContext.Provider>
