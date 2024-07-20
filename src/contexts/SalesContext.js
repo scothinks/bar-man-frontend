@@ -1,6 +1,14 @@
-import React, { createContext, useContext, useCallback } from 'react';
+import React, { createContext, useContext, useCallback, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
-import { createMultipleSales, updateSalePaymentStatus, getCustomers, createCustomer, createCustomerTab, getSales } from '../services/api';
+import { 
+  createMultipleSales, 
+  updateSalePaymentStatus, 
+  getCustomers, 
+  createCustomer, 
+  createCustomerTab, 
+  getSales,
+  searchSales as apiSearchSales,
+} from '../services/api';
 import { useAuth } from './AuthContext';
 
 const SalesContext = createContext();
@@ -8,9 +16,11 @@ const SalesContext = createContext();
 export const SalesProvider = ({ children }) => {
   const queryClient = useQueryClient();
   const { logout, isAuthenticated } = useAuth();
+  const [sales, setSales] = useState([]);
+  const [summary, setSummary] = useState({ total_done: 0, total_pending: 0 });
+  const [totalSalesCount, setTotalSalesCount] = useState(0);
 
   const {
-    data: salesData = { sales: [], summary: { total_done: 0, total_pending: 0 }, count: 0 },
     isLoading: salesLoading,
     error: salesError,
     refetch: refetchSales,
@@ -86,6 +96,19 @@ export const SalesProvider = ({ children }) => {
     },
   });
 
+  const searchSales = useCallback(async (params) => {
+    try {
+      const response = await apiSearchSales(params);  
+      return response;
+    } catch (err) {
+      console.error('Error searching sales:', err);
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+      throw err;
+    }
+  }, [logout]);
+
   const addMultipleSales = useCallback((salesData) => addMultipleSalesMutation.mutateAsync(salesData), [addMultipleSalesMutation]);
   const updatePaymentStatus = useCallback((saleId, status) => updatePaymentStatusMutation.mutateAsync({ saleId, status }), [updatePaymentStatusMutation]);
   const addCustomer = useCallback((customerData) => addCustomerMutation.mutateAsync(customerData), [addCustomerMutation]);
@@ -101,11 +124,11 @@ export const SalesProvider = ({ children }) => {
 
   return (
     <SalesContext.Provider value={{ 
-      sales: salesData.sales,
+      sales,
       customers,
       loading: salesLoading || customersLoading,
       error: salesError || customersError,
-      summary: salesData.summary,
+      summary,
       addMultipleSales,
       updatePaymentStatus,
       fetchCustomers: refreshCustomers,
@@ -113,7 +136,8 @@ export const SalesProvider = ({ children }) => {
       addCustomer,
       addCustomerTab,
       refreshSales,
-      totalSalesCount: salesData.count,
+      totalSalesCount,
+      searchSales,  
     }}>
       {children}
     </SalesContext.Provider>

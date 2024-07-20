@@ -48,6 +48,7 @@ api.interceptors.request.use(
     console.log('Full request headers:', JSON.stringify(config.headers, null, 2));
     console.log(`Request URL: ${config.url}`);
     console.log(`Request Method: ${config.method}`);
+    console.log(`Request Params: ${JSON.stringify(config.params, null, 2)}`);
 
     if (config.method === 'post' || config.method === 'put') {
       console.log('Request Body:', JSON.stringify(config.data, null, 2));
@@ -66,6 +67,7 @@ api.interceptors.response.use(
   async (error) => {
     if (error.response) {
       console.error(`Error ${error.response.status}: ${error.response.statusText}`);
+      console.error('Error response data:', error.response.data);
       if (error.response.status === 401) {
         console.log('Unauthorized access - logging out');
         setAuthToken(null);
@@ -163,6 +165,16 @@ export const getSales = (params) => apiCall('get', '/sales/', null, params);
 export const createSale = (saleData) => apiCall('post', '/sales/', saleData);
 export const createMultipleSales = (salesData) => apiCall('post', '/sales/multiple/', salesData);
 export const updateSalePaymentStatus = (saleId, status) => apiCall('patch', `/sales/${saleId}/update_payment_status/`, { payment_status: status });
+export const searchSales = async (params) => {
+  try {
+    const response = await api.get('/sales/search/', { params });
+    console.log('Search sales response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Error searching sales:', error);
+    throw error;
+  }
+};
 
 // Customer operations
 export const getCustomers = (params) => apiCall('get', '/customers/', null, params);

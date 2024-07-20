@@ -24,64 +24,83 @@ const formatCost = (cost) => {
 
 const Sales = () => {
   const { user, checkAuth, logout } = useAuth();
-  const { 
-    sales = [], 
+  const {  
     loading, 
     error, 
     updatePaymentStatus, 
-    fetchSales, 
-    summary,
     addMultipleSales,
-    totalSalesCount
+    searchSales
   } = useSales();
+  const [sales, setSales] = useState([]);
+  const [summary, setSummary] = useState({ total_done: 0, total_pending: 0 });
+  const [totalSalesCount, setTotalSalesCount] = useState(0);
   const { inventoryItems = [] } = useInventory();
   const { customers, addCustomer } = useCustomer();
   const [newSales, setNewSales] = useState([{ item: '', quantity: 1 }]);
   const [newCustomer, setNewCustomer] = useState({ name: '', phone_number: '' });
   const [currentPage, setCurrentPage] = useState(0);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [hasPreviousPage, setHasPreviousPage] = useState(false);
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
   const [dateFilter, setDateFilter] = useState('all');
   const [openNewCustomerDialog, setOpenNewCustomerDialog] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const itemsPerPage = 5;
 
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
 
-  const fetchSalesData = useCallback((reset = false) => {
+  const fetchSalesData = useCallback((page = 0, reset = false) => {
     if (!user) return;
-    const newPage = reset ? 0 : currentPage;
+    setIsLoading(true); // Set loading state to true
+    const newPage = reset ? 0 : page;
     const filters = {
-      start_date: startDate ? startDate.toISOString().split('T')[0] : null,
-      end_date: endDate ? endDate.toISOString().split('T')[0] : null,
-      offset: newPage * itemsPerPage,
-      limit: itemsPerPage
+      customer: searchTerm || undefined,
+      start_date: startDate ? startDate.toISOString().split('T')[0] : undefined,
+      end_date: endDate ? endDate.toISOString().split('T')[0] : undefined,
+      period: dateFilter !== 'custom' ? dateFilter : undefined,
+      page: newPage + 1,
+      page_size: itemsPerPage
     };
+
+    Object.keys(filters).forEach(key => filters[key] === undefined && delete filters[key]);
+
     console.log('Fetching sales with filters:', filters);
-    fetchSales(filters, reset).catch((error) => {
-      console.error('Error fetching sales:', error);
-      setSnackbar({ open: true, message: 'Failed to fetch sales. Please try again.', severity: 'error' });
-      if (error.message === 'Authentication required' || (error.response && error.response.status === 401)) {
-        logout();
-      }
-    });
-    if (reset) {
-      setCurrentPage(0);
-    }
-  }, [fetchSales, startDate, endDate, currentPage, itemsPerPage, user, logout]);
+    searchSales(filters)
+      .then((data) => {
+        setSales(data.results || []);
+        setSummary(data.summary || { total_done: 0, total_pending: 0 });
+        setTotalSalesCount(data.count || 0);
+        setHasNextPage(!!data.next);
+        setHasPreviousPage(!!data.previous);
+        setCurrentPage(newPage);
+      })
+      .catch((error) => {
+        console.error('Error fetching sales:', error);
+        setSnackbar({ open: true, message: 'Failed to fetch sales. Please try again.', severity: 'error' });
+        if (error.message === 'Authentication required' || (error.response && error.response.status === 401)) {
+          logout();
+        }
+      })
+      .finally(() => {
+        setIsLoading(false); // Set loading state to false
+      });
+  }, [searchSales, searchTerm, startDate, endDate, dateFilter, itemsPerPage, user, logout]);
 
   useEffect(() => {
     if (user) {
-      fetchSalesData(true);
+      fetchSalesData(0, true);
     }
-  }, [fetchSalesData, user, startDate, endDate, dateFilter]);
+  }, [fetchSalesData, user, startDate, endDate, dateFilter, searchTerm]);
 
   const handleUpdatePaymentStatus = async (saleId, newStatus) => {
     try {
       await updatePaymentStatus(saleId, newStatus);
-      fetchSalesData(true);
+      fetchSalesData(currentPage, true);
       setSnackbar({ open: true, message: 'Payment status updated successfully', severity: 'success' });
     } catch (error) {
       console.error('Failed to update payment status:', error);
@@ -96,8 +115,7 @@ const Sales = () => {
     try {
       await addMultipleSales(newSales);
       setNewSales([{ item: '', quantity: 1 }]);
-      setCurrentPage(0);
-      fetchSalesData(true);
+      fetchSalesData(0, true);
       setSnackbar({ open: true, message: 'Sales added successfully', severity: 'success' });
     } catch (error) {
       console.error('Failed to add sales:', error);
@@ -125,13 +143,15 @@ const Sales = () => {
   };
 
   const handleNextPage = () => {
-    setCurrentPage(prev => prev + 1);
-    fetchSalesData(false);
+    if (hasNextPage) {
+      fetchSalesData(currentPage + 1);
+    }
   };
-
+  
   const handlePreviousPage = () => {
-    setCurrentPage(prev => Math.max(0, prev - 1));
-    fetchSalesData(false);
+    if (hasPreviousPage) {
+      fetchSalesData(currentPage - 1);
+    }
   };
 
   const handleDateFilterChange = (filter) => {
@@ -142,27 +162,38 @@ const Sales = () => {
         setStartDate(null);
         setEndDate(null);
         break;
+      case 'day':
+      case 'last 24 hours':
+        setStartDate(subDays(today, 1));
+        setEndDate(today);
+        break;
       case 'yesterday':
         setStartDate(subDays(today, 1));
         setEndDate(subDays(today, 1));
         break;
-      case 'last7':
+      case 'week':
         setStartDate(subDays(today, 7));
         setEndDate(today);
         break;
-      case 'last30':
+      case 'month':
         setStartDate(subDays(today, 30));
         setEndDate(today);
         break;
-      case 'last90':
-        setStartDate(subDays(today, 90));
+      case 'year':
+        setStartDate(subDays(today, 365));
         setEndDate(today);
         break;
       default:
-        // 'custom' - do nothing, let user select dates
         break;
     }
-    fetchSalesData(true);
+    fetchSalesData(0, true);
+  };
+
+  const handleCustomDateChange = (start, end) => {
+    setStartDate(start);
+    setEndDate(end);
+    setDateFilter('custom');
+    fetchSalesData(0, true);
   };
 
   const handleCloseSnackbar = (event, reason) => {
@@ -187,14 +218,12 @@ const Sales = () => {
   };
 
   const filteredSales = useMemo(() => {
-  return sales.slice(currentPage * itemsPerPage, (currentPage + 1) * itemsPerPage);
-}, [sales, currentPage, itemsPerPage]);
+    return sales;
+  }, [sales]);
 
   if (!user) return <Typography>Please log in to view sales.</Typography>;
-  if (loading && sales.length === 0) return <CircularProgress />;
+  if (loading) return <CircularProgress />;
   if (error) return <Alert severity="error">Error: {error}</Alert>;
-
-  const hasMoreSales = filteredSales.length === itemsPerPage;
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={enUS}>
@@ -205,14 +234,20 @@ const Sales = () => {
             Total Done: {formatCost(summary.total_done)} | Total Pending: {formatCost(summary.total_pending)}
           </Typography>
           <Box sx={{ display: 'flex', mb: 2, alignItems: 'center' }}>
+            <TextField
+              label="Search Customer or Item"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              sx={{ mr: 2 }}
+            />
             <FormControl sx={{ minWidth: 120, mr: 2 }}>
               <InputLabel>Date Filter</InputLabel>
               <Select value={dateFilter} onChange={(e) => handleDateFilterChange(e.target.value)}>
                 <MenuItem value="all">All time</MenuItem>
-                <MenuItem value="yesterday">Yesterday</MenuItem>
-                <MenuItem value="last7">Last 7 days</MenuItem>
-                <MenuItem value="last30">Last 30 days</MenuItem>
-                <MenuItem value="last90">Last 90 days</MenuItem>
+                <MenuItem value="day">Last 24 hours</MenuItem>
+                <MenuItem value="week">Last 7 days</MenuItem>
+                <MenuItem value="month">Last 30 days</MenuItem>
+                <MenuItem value="year">Last Year</MenuItem>
                 <MenuItem value="custom">Custom</MenuItem>
               </Select>
             </FormControl>
@@ -221,65 +256,71 @@ const Sales = () => {
                 <DatePicker
                   label="Start Date"
                   value={startDate}
-                  onChange={(newDate) => {
-                    setStartDate(newDate);
-                    setCurrentPage(0);
-                    fetchSalesData(true);
-                  }}
+                  onChange={(newDate) => handleCustomDateChange(newDate, endDate)}
                   renderInput={(params) => <TextField {...params} />}
                 />
                 <DatePicker
                   label="End Date"
                   value={endDate}
-                  onChange={(newDate) => {
-                    setEndDate(newDate);
-                    setCurrentPage(0);
-                    fetchSalesData(true);
-                  }}
+                  onChange={(newDate) => handleCustomDateChange(startDate, newDate)}
                   renderInput={(params) => <TextField {...params} sx={{ ml: 2 }} />}
                 />
               </>
             )}
           </Box>
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Item</TableCell>
-                  <TableCell>Quantity</TableCell>
-                  <TableCell>Amount</TableCell>
-                  <TableCell>Payment Status</TableCell>
-                  <TableCell>Customer</TableCell>
-                  <TableCell>Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredSales.map((sale) => (
-                  <TableRow key={sale.id}>
-                    <TableCell>{sale.item_name}</TableCell>
-                    <TableCell>{sale.quantity}</TableCell>
-                    <TableCell>{formatCost(sale.total_amount)}</TableCell>
-                    <TableCell>{sale.payment_status}</TableCell>
-                    <TableCell>{sale.customer_name}</TableCell>
-                    <TableCell>
-                      <Button 
-                        onClick={() => handleUpdatePaymentStatus(sale.id, sale.payment_status === 'PENDING' ? 'DONE' : 'PENDING')}
-                      >
-                        {sale.payment_status === 'PENDING' ? 'Mark as Paid' : 'Mark as Pending'}
-                      </Button>
-                    </TableCell>
+          {isLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+              <CircularProgress />
+            </Box>
+          ) : sales.length > 0 ? (
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Item</TableCell>
+                    <TableCell>Quantity</TableCell>
+                    <TableCell>Amount</TableCell>
+                    <TableCell>Payment Status</TableCell>
+                    <TableCell>Customer</TableCell>
+                    <TableCell>Actions</TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
-            <Button onClick={handlePreviousPage} disabled={currentPage === 0}>Previous</Button>
-            <Button onClick={handleNextPage} disabled={!hasMoreSales}>Next</Button>
-          </Box>
-          <Typography>
-            Showing {filteredSales.length > 0 ? currentPage * itemsPerPage + 1 : 0} - {Math.min((currentPage + 1) * itemsPerPage, totalSalesCount)} of {totalSalesCount} sales
-          </Typography>
+                </TableHead>
+                <TableBody>
+                  {sales.map((sale) => (
+                    <TableRow key={sale.id}>
+                      <TableCell>{sale.item_name}</TableCell>
+                      <TableCell>{sale.quantity}</TableCell>
+                      <TableCell>{formatCost(sale.total_amount)}</TableCell>
+                      <TableCell>{sale.payment_status}</TableCell>
+                      <TableCell>{sale.customer_name}</TableCell>
+                      <TableCell>
+                        <Button 
+                          variant="contained"
+                          color={sale.payment_status === 'PENDING' ? 'error' : 'primary'}
+                          onClick={() => handleUpdatePaymentStatus(sale.id, sale.payment_status === 'PENDING' ? 'DONE' : 'PENDING')}
+                        >
+                          {sale.payment_status === 'PENDING' ? 'Mark as Paid' : 'Mark as Pending'}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <Typography>No sales found for the selected criteria.</Typography>
+          )}
+          {sales.length > 0 && (
+            <>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
+                <Button onClick={handlePreviousPage} disabled={!hasPreviousPage}>Previous</Button>
+                <Button onClick={handleNextPage} disabled={!hasNextPage}>Next</Button>
+              </Box>
+              <Typography>
+                Showing {currentPage * itemsPerPage + 1} - {Math.min((currentPage + 1) * itemsPerPage, totalSalesCount)} of {totalSalesCount} sales
+              </Typography>
+            </>
+          )}
         </Box>
         <Box sx={{ width: '300px' }}>
           <Typography variant="h6" gutterBottom>Add New Sales</Typography>

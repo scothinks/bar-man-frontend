@@ -18,7 +18,7 @@ const Login = () => {
     setIsLoading(true);
     try {
       await login(username, password);
-      navigate('/');
+      navigate('/sales');
     } catch (error) {
       console.error('Login error:', error);
     } finally {
