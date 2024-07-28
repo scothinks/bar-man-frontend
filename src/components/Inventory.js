@@ -4,10 +4,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { 
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, 
   Button, CircularProgress, TextField, Dialog, DialogActions, DialogContent, DialogTitle, 
-  Alert, Box, Tabs, Tab, IconButton, Snackbar
+  Alert, Box, Tabs, Tab, IconButton, Snackbar, Switch, FormControlLabel
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import RestoreIcon from '@mui/icons-material/Restore';
 
 const formatCost = (cost) => {
   if (cost === null || cost === undefined) return 'N/A';
@@ -18,7 +19,18 @@ const formatCost = (cost) => {
 
 const Inventory = () => {
   const { user, logout } = useAuth();
-  const { inventoryItems, isLoading, error, fetchInventoryItems, addInventoryItem, refreshInventory } = useInventory();
+  const { 
+    inventoryItems, 
+    isLoading, 
+    error, 
+    fetchInventoryItems, 
+    addInventoryItem, 
+    updateInventoryItem,
+    deleteInventoryItem,
+    confirmDeleteInventoryItem,
+    restoreInventoryItem,
+    refreshInventory 
+  } = useInventory();
   const [openDialog, setOpenDialog] = useState(false);
   const [dialogMode, setDialogMode] = useState('add');
   const [selectedItem, setSelectedItem] = useState(null);
@@ -28,23 +40,25 @@ const Inventory = () => {
   const [searchLetter, setSearchLetter] = useState('');
   const [tabValue, setTabValue] = useState(0);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [showDeleted, setShowDeleted] = useState(false);
 
   const itemsPerPage = 10;
 
   useEffect(() => {
     if (user) {
-      fetchInventoryItems();
+      fetchInventoryItems(showDeleted);
     }
-  }, [user, fetchInventoryItems]);
+  }, [user, fetchInventoryItems, showDeleted]);
 
   const filteredItems = useMemo(() => {
     return inventoryItems.filter(item => 
-      searchLetter === '' || (item.name && item.name.toLowerCase().startsWith(searchLetter.toLowerCase()))
+      (searchLetter === '' || (item.name && item.name.toLowerCase().startsWith(searchLetter.toLowerCase()))) &&
+      (showDeleted || !item.is_deleted)
     );
-  }, [inventoryItems, searchLetter]);
+  }, [inventoryItems, searchLetter, showDeleted]);
   
   const lowInventoryItems = useMemo(() => {
-    return inventoryItems.filter(item => item.quantity <= item.low_inventory_threshold);
+    return inventoryItems.filter(item => item.quantity <= item.low_inventory_threshold && !item.is_deleted);
   }, [inventoryItems]);
 
   const paginatedItems = useMemo(() => {
@@ -78,8 +92,7 @@ const Inventory = () => {
       if (dialogMode === 'add') {
         await addInventoryItem(newItem);
       } else if (dialogMode === 'edit') {
-        // Implement updateInventoryItem in InventoryContext and use it here
-        // await updateInventoryItem(selectedItem.id, newItem);
+        await updateInventoryItem(selectedItem.id, newItem);
       }
       handleCloseDialog();
       refreshInventory();
@@ -95,18 +108,47 @@ const Inventory = () => {
   };
 
   const handleDeleteItem = async (itemId) => {
-    if (window.confirm('Are you sure you want to delete this item?')) {
+    if (window.confirm('Are you sure you want to delete this item? It will be moved to the deleted items list.')) {
       try {
-        // Implement deleteInventoryItem in InventoryContext and use it here
-        // await deleteInventoryItem(itemId);
+        await deleteInventoryItem(itemId);
         refreshInventory();
-        setSnackbar({ open: true, message: 'Item deleted successfully', severity: 'success' });
+        setSnackbar({ open: true, message: 'Item marked for deletion successfully', severity: 'success' });
       } catch (error) {
         console.error("Error deleting item:", error);
         setSnackbar({ open: true, message: 'Failed to delete item. Please try again.', severity: 'error' });
         if (error.response && error.response.status === 401) {
           logout();
         }
+      }
+    }
+  };
+
+  const handleConfirmDelete = async (itemId) => {
+    if (window.confirm('Are you sure you want to permanently delete this item? This action cannot be undone.')) {
+      try {
+        await confirmDeleteInventoryItem(itemId);
+        refreshInventory();
+        setSnackbar({ open: true, message: 'Item permanently deleted successfully', severity: 'success' });
+      } catch (error) {
+        console.error("Error confirming item deletion:", error);
+        setSnackbar({ open: true, message: 'Failed to permanently delete item. Please try again.', severity: 'error' });
+        if (error.response && error.response.status === 401) {
+          logout();
+        }
+      }
+    }
+  };
+
+  const handleRestoreItem = async (itemId) => {
+    try {
+      await restoreInventoryItem(itemId);
+      refreshInventory();
+      setSnackbar({ open: true, message: 'Item restored successfully', severity: 'success' });
+    } catch (error) {
+      console.error("Error restoring item:", error);
+      setSnackbar({ open: true, message: 'Failed to restore item. Please try again.', severity: 'error' });
+      if (error.response && error.response.status === 401) {
+        logout();
       }
     }
   };
@@ -128,6 +170,10 @@ const Inventory = () => {
       return;
     }
     setSnackbar({ ...snackbar, open: false });
+  };
+
+  const handleShowDeletedChange = (event) => {
+    setShowDeleted(event.target.checked);
   };
 
   if (!user) return <Typography>Please log in to view inventory.</Typography>;
@@ -161,6 +207,18 @@ const Inventory = () => {
         style={{ marginLeft: '20px' }}
       />
 
+      <FormControlLabel
+        control={
+          <Switch
+            checked={showDeleted}
+            onChange={handleShowDeletedChange}
+            name="showDeleted"
+            color="primary"
+          />
+        }
+        label="Show Deleted Items"
+      />
+
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
@@ -174,18 +232,32 @@ const Inventory = () => {
           </TableHead>
           <TableBody>
             {(tabValue === 0 ? paginatedItems : lowInventoryItems).map(item => (
-              <TableRow key={item.id}>
+              <TableRow key={item.id} style={item.is_deleted ? { backgroundColor: '#ffcccb' } : {}}>
                 <TableCell component="th" scope="row">{item.name}</TableCell>
                 <TableCell align="right">{item.quantity}</TableCell>
                 <TableCell align="right">{formatCost(item.cost)}</TableCell>
                 <TableCell align="right">{item.low_inventory_threshold}</TableCell>
                 <TableCell align="right">
-                  <IconButton onClick={() => handleOpenDialog('edit', item)}>
-                    <EditIcon />
-                  </IconButton>
-                  <IconButton onClick={() => handleDeleteItem(item.id)}>
-                    <DeleteIcon />
-                  </IconButton>
+                  {!item.is_deleted && (
+                    <>
+                      <IconButton onClick={() => handleOpenDialog('edit', item)}>
+                        <EditIcon />
+                      </IconButton>
+                      <IconButton onClick={() => handleDeleteItem(item.id)}>
+                        <DeleteIcon />
+                      </IconButton>
+                    </>
+                  )}
+                  {item.is_deleted && (
+                    <>
+                      <IconButton onClick={() => handleRestoreItem(item.id)}>
+                        <RestoreIcon />
+                      </IconButton>
+                      <IconButton onClick={() => handleConfirmDelete(item.id)}>
+                        <DeleteIcon />
+                      </IconButton>
+                    </>
+                  )}
                 </TableCell>
               </TableRow>
             ))}

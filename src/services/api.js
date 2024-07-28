@@ -141,26 +141,20 @@ const apiCall = async (method, url, data = null, params = null) => {
 };
 
 // Inventory operations
-export const getInventoryItems = async (params) => {
+export const getInventoryItems = async (includeDeleted = false) => {
   try {
-    const response = await apiCall('get', '/inventory/', null, params);
-    console.log('Initial inventory response:', response);
-    if (response && response.inventoryitems) {
-      const itemsResponse = await api.get(response.inventoryitems);
-      console.log('Inventory items response:', itemsResponse.data);
-      return itemsResponse.data;
-    } else {
-      console.error('Unexpected inventory response format:', response);
-      return [];
-    }
+    const response = await apiCall('get', '/inventory/inventoryitems/', null, { include_deleted: includeDeleted });
+    return response.results || response;
   } catch (error) {
-    console.error('Error fetching inventory items:', error);
     throw error;
   }
 };
-export const createInventoryItem = (itemData) => apiCall('post', '/inventory/', itemData);
-export const updateInventoryItem = (id, itemData) => apiCall('put', `/inventory/${id}/`, itemData);
-export const deleteInventoryItem = (id) => apiCall('delete', `/inventory/${id}/`);
+
+export const createInventoryItem = (itemData) => apiCall('post', '/inventory/inventoryitems/', itemData);
+export const updateInventoryItem = (id, itemData) => apiCall('put', `/inventory/inventoryitems/${id}/`, itemData);
+export const deleteInventoryItem = (id) => apiCall('post', `/inventory/inventoryitems/${id}/soft-delete/`);
+export const confirmDeleteInventoryItem = (id) => apiCall('post', `/inventory/inventoryitems/${id}/confirm-delete/`);
+export const restoreInventoryItem = (id) => apiCall('post', `/inventory/inventoryitems/${id}/restore/`);
 
 // Sales operations
 export const getSales = (params) => apiCall('get', '/sales/', null, params);

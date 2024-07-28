@@ -1,5 +1,12 @@
 import React, { createContext, useContext, useCallback, useState } from 'react';
-import { getInventoryItems, createInventoryItem, updateInventoryItem as apiUpdateInventoryItem, deleteInventoryItem as apiDeleteInventoryItem } from '../services/api';
+import { 
+  getInventoryItems, 
+  createInventoryItem, 
+  updateInventoryItem as apiUpdateInventoryItem, 
+  deleteInventoryItem as apiDeleteInventoryItem,
+  confirmDeleteInventoryItem as apiConfirmDeleteInventoryItem,
+  restoreInventoryItem as apiRestoreInventoryItem
+} from '../services/api';
 import { useAuth } from './AuthContext';
 
 const InventoryContext = createContext();
@@ -10,12 +17,12 @@ export const InventoryProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const fetchInventoryItems = useCallback(async () => {
+  const fetchInventoryItems = useCallback(async (includeDeleted = false) => {
     if (!isAuthenticated()) return;
     setIsLoading(true);
     setError(null);
     try {
-      const data = await getInventoryItems();
+      const data = await getInventoryItems(includeDeleted);
       const items = data.results || data;
       const formattedItems = Array.isArray(items)
         ? items.map(item => ({
@@ -82,7 +89,9 @@ export const InventoryProvider = ({ children }) => {
     setIsLoading(true);
     try {
       await apiDeleteInventoryItem(id);
-      setInventoryItems(prevItems => prevItems.filter(item => item.id !== id));
+      setInventoryItems(prevItems => prevItems.map(item => 
+        item.id === id ? { ...item, is_deleted: true } : item
+      ));
     } catch (err) {
       console.error('Error deleting inventory item:', err);
       setError('Failed to delete inventory item. Please try again.');
@@ -95,9 +104,48 @@ export const InventoryProvider = ({ children }) => {
     }
   }, [isAuthenticated, logout]);
 
-  const refreshInventory = useCallback(() => {
+  const confirmDeleteInventoryItem = useCallback(async (id) => {
+    if (!isAuthenticated()) return;
+    setIsLoading(true);
+    try {
+      await apiConfirmDeleteInventoryItem(id);
+      setInventoryItems(prevItems => prevItems.filter(item => item.id !== id));
+    } catch (err) {
+      console.error('Error confirming deletion of inventory item:', err);
+      setError('Failed to confirm deletion of inventory item. Please try again.');
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, logout]);
+
+  const restoreInventoryItem = useCallback(async (id) => {
+    if (!isAuthenticated()) return;
+    setIsLoading(true);
+    try {
+      const restored = await apiRestoreInventoryItem(id);
+      setInventoryItems(prevItems => prevItems.map(item => 
+        item.id === id ? { ...restored, is_deleted: false } : item
+      ));
+      return restored;
+    } catch (err) {
+      console.error('Error restoring inventory item:', err);
+      setError('Failed to restore inventory item. Please try again.');
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, logout]);
+
+  const refreshInventory = useCallback((includeDeleted = false) => {
     if (isAuthenticated()) {
-      fetchInventoryItems();
+      fetchInventoryItems(includeDeleted);
     }
   }, [isAuthenticated, fetchInventoryItems]);
 
@@ -110,6 +158,8 @@ export const InventoryProvider = ({ children }) => {
       addInventoryItem,
       updateInventoryItem,
       deleteInventoryItem,
+      confirmDeleteInventoryItem,
+      restoreInventoryItem,
       refreshInventory
     }}>
       {children}
