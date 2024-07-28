@@ -1,6 +1,4 @@
-import React from 'react';
-import { QueryClient, QueryClientProvider } from 'react-query';
-import { ReactQueryDevtools } from 'react-query/devtools';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Route, Routes, Link, Navigate } from 'react-router-dom';
 import { AppBar, Toolbar, Button, Typography, Box, Container, CircularProgress, Snackbar } from '@mui/material';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -47,15 +45,6 @@ const Navigation = () => {
   );
 };
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
-
 const NetworkStatusAlert = () => {
   const isOnline = useNetworkStatus();
   return (
@@ -70,28 +59,27 @@ const NetworkStatusAlert = () => {
 const App = () => {
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <InventoryProvider>
-            <CustomerProvider>
+      <AuthProvider>
+        <InventoryProvider>
+          <CustomerProvider>
+            <SalesProvider>
               <Router>
                 <Navigation />
                 <Container>
                   <Routes>
                     <Route path="/login" element={<Login />} />
                     <Route path="/" element={<PrivateRoute><Inventory /></PrivateRoute>} />
-                    <Route path="/sales" element={<PrivateRoute><SalesProvider><Sales /></SalesProvider></PrivateRoute>} />
+                    <Route path="/sales" element={<PrivateRoute><Sales /></PrivateRoute>} />
                     <Route path="/customer-tabs" element={<PrivateRoute><CustomerTabs /></PrivateRoute>} />
                     <Route path="/admin" element={<PrivateRoute><AdminManagement /></PrivateRoute>} />
                   </Routes>
                 </Container>
                 <NetworkStatusAlert />
               </Router>
-            </CustomerProvider>
-          </InventoryProvider>
-        </AuthProvider>
-        <ReactQueryDevtools />
-      </QueryClientProvider>
+            </SalesProvider>
+          </CustomerProvider>
+        </InventoryProvider>
+      </AuthProvider>
     </ErrorBoundary>
   );
 };
@@ -99,7 +87,7 @@ const App = () => {
 const PrivateRoute = ({ children }) => {
   const { user, isLoading, error, checkAuth } = useAuth();
 
-  React.useEffect(() => {
+  useEffect(() => {
     checkAuth();
   }, [checkAuth]);
 

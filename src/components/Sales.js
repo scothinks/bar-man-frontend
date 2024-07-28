@@ -25,15 +25,15 @@ const formatCost = (cost) => {
 const Sales = () => {
   const { user, checkAuth, logout } = useAuth();
   const {  
+    sales,
     loading, 
     error, 
     updatePaymentStatus, 
     addMultipleSales,
-    searchSales
+    searchSales,
+    summary,
+    totalSalesCount
   } = useSales();
-  const [sales, setSales] = useState([]);
-  const [summary, setSummary] = useState({ total_done: 0, total_pending: 0 });
-  const [totalSalesCount, setTotalSalesCount] = useState(0);
   const { inventoryItems = [] } = useInventory();
   const { customers, addCustomer } = useCustomer();
   const [newSales, setNewSales] = useState([{ item: '', quantity: 1 }]);
@@ -47,7 +47,6 @@ const Sales = () => {
   const [openNewCustomerDialog, setOpenNewCustomerDialog] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [searchTerm, setSearchTerm] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const itemsPerPage = 5;
 
   useEffect(() => {
@@ -56,7 +55,6 @@ const Sales = () => {
 
   const fetchSalesData = useCallback((page = 0, reset = false) => {
     if (!user) return;
-    setIsLoading(true); // Set loading state to true
     const newPage = reset ? 0 : page;
     const filters = {
       customer: searchTerm || undefined,
@@ -72,9 +70,6 @@ const Sales = () => {
     console.log('Fetching sales with filters:', filters);
     searchSales(filters)
       .then((data) => {
-        setSales(data.results || []);
-        setSummary(data.summary || { total_done: 0, total_pending: 0 });
-        setTotalSalesCount(data.count || 0);
         setHasNextPage(!!data.next);
         setHasPreviousPage(!!data.previous);
         setCurrentPage(newPage);
@@ -85,9 +80,6 @@ const Sales = () => {
         if (error.message === 'Authentication required' || (error.response && error.response.status === 401)) {
           logout();
         }
-      })
-      .finally(() => {
-        setIsLoading(false); // Set loading state to false
       });
   }, [searchSales, searchTerm, startDate, endDate, dateFilter, itemsPerPage, user, logout]);
 
@@ -268,7 +260,7 @@ const Sales = () => {
               </>
             )}
           </Box>
-          {isLoading ? (
+          {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
               <CircularProgress />
             </Box>

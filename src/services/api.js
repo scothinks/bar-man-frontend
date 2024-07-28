@@ -12,6 +12,8 @@ const api = axios.create({
   maxBodyLength: Infinity,
 });
 
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 export const setAuthToken = (token) => {
   if (token) {
     api.defaults.headers.common['Authorization'] = `Token ${token}`;
@@ -177,6 +179,33 @@ export const searchSales = async (params) => {
 };
 
 // Customer operations
+export const batchCustomerOperations = async (operations) => {
+  try {
+    const results = {};
+    for (const operation of operations) {
+      switch (operation.operation) {
+        case 'getCustomers':
+          results.customers = await getCustomers();
+          break;
+        case 'getCustomerTabs':
+          results.customerTabs = await getCustomerTabs();
+          break;
+        case 'createCustomer':
+          results.createdCustomer = await createCustomer(operation.data);
+          break;
+        case 'createCustomerTab':
+          results.createdTab = await createCustomerTab(operation.data);
+          break;
+        default:
+          console.error(`Unknown operation: ${operation.operation}`);
+      }
+    }
+    return results;
+  } catch (error) {
+    console.error('Error in batch customer operations:', error);
+    throw error;
+  }
+};
 export const getCustomers = (params) => apiCall('get', '/customers/', null, params);
 export const createCustomer = (customerData) => apiCall('post', '/customers/', customerData);
 export const getCustomerTabs = (params) => apiCall('get', '/customers/tabs/', null, params);

@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useCallback, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { 
   createMultipleSales, 
   updateSalePaymentStatus, 
@@ -14,125 +13,170 @@ import { useAuth } from './AuthContext';
 const SalesContext = createContext();
 
 export const SalesProvider = ({ children }) => {
-  const queryClient = useQueryClient();
   const { logout, isAuthenticated } = useAuth();
   const [sales, setSales] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [summary, setSummary] = useState({ total_done: 0, total_pending: 0 });
   const [totalSalesCount, setTotalSalesCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  const {
-    isLoading: salesLoading,
-    error: salesError,
-    refetch: refetchSales,
-  } = useQuery(['sales'], () => getSales({ limit: 5, page: 1 }), {
-    enabled: isAuthenticated(),
-    onError: (err) => {
-      console.error('Error fetching sales:', err);
-      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
-        logout();
-      }
-    },
-  });
-
-  const {
-    data: customers = [],
-    isLoading: customersLoading,
-    error: customersError,
-  } = useQuery(['customers'], getCustomers, {
-    enabled: isAuthenticated(),
-    onError: (err) => {
-      console.error('Error fetching customers:', err);
-      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
-        logout();
-      }
-    },
-  });
-
-  const addMultipleSalesMutation = useMutation(createMultipleSales, {
-    onSuccess: () => {
-      queryClient.invalidateQueries('sales');
-    },
-    onError: (err) => {
-      console.error('Error adding sales:', err);
-      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
-        logout();
-      }
-    },
-  });
-
-  const updatePaymentStatusMutation = useMutation(
-    ({ saleId, status }) => updateSalePaymentStatus(saleId, status),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries('sales');
-      },
-      onError: (err) => {
-        console.error('Error updating payment status:', err);
-        if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
-          logout();
-        }
-      },
-    }
-  );
-
-  const addCustomerMutation = useMutation(createCustomer, {
-    onSuccess: (newCustomer) => {
-      queryClient.setQueryData('customers', (oldCustomers) => [...(oldCustomers || []), newCustomer]);
-    },
-    onError: (err) => {
-      console.error('Error adding customer:', err);
-      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
-        logout();
-      }
-    },
-  });
-
-  const addCustomerTabMutation = useMutation(createCustomerTab, {
-    onError: (err) => {
-      console.error('Error creating customer tab:', err);
-      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
-        logout();
-      }
-    },
-  });
-
-  const searchSales = useCallback(async (params) => {
+  const fetchSales = useCallback(async (params = { limit: 5, page: 1 }) => {
+    if (!isAuthenticated()) return;
+    setIsLoading(true);
+    setError(null);
     try {
-      const response = await apiSearchSales(params);  
-      return response;
+      const data = await getSales(params);
+      setSales(data.results || []);
+      setTotalSalesCount(data.count || 0);
+      console.log('Sales fetched successfully');
     } catch (err) {
-      console.error('Error searching sales:', err);
+      console.error('Error fetching sales:', err);
+      setError('Failed to fetch sales. Please try again.');
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, logout]);
+
+  const fetchCustomers = useCallback(async () => {
+    if (!isAuthenticated()) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await getCustomers();
+      setCustomers(data);
+      console.log('Customers fetched successfully');
+    } catch (err) {
+      console.error('Error fetching customers:', err);
+      setError('Failed to fetch customers. Please try again.');
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, logout]);
+
+  const addMultipleSales = useCallback(async (salesData) => {
+    if (!isAuthenticated()) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      await createMultipleSales(salesData);
+      await fetchSales();
+    } catch (err) {
+      console.error('Error adding sales:', err);
+      setError('Failed to add sales. Please try again.');
       if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
         logout();
       }
       throw err;
+    } finally {
+      setIsLoading(false);
     }
-  }, [logout]);
+  }, [isAuthenticated, logout, fetchSales]);
 
-  const addMultipleSales = useCallback((salesData) => addMultipleSalesMutation.mutateAsync(salesData), [addMultipleSalesMutation]);
-  const updatePaymentStatus = useCallback((saleId, status) => updatePaymentStatusMutation.mutateAsync({ saleId, status }), [updatePaymentStatusMutation]);
-  const addCustomer = useCallback((customerData) => addCustomerMutation.mutateAsync(customerData), [addCustomerMutation]);
-  const addCustomerTab = useCallback((tabData) => addCustomerTabMutation.mutateAsync(tabData), [addCustomerTabMutation]);
+  const updatePaymentStatus = useCallback(async (saleId, status) => {
+    if (!isAuthenticated()) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      await updateSalePaymentStatus(saleId, status);
+      await fetchSales();
+    } catch (err) {
+      console.error('Error updating payment status:', err);
+      setError('Failed to update payment status. Please try again.');
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, logout, fetchSales]);
+
+  const addCustomer = useCallback(async (customerData) => {
+    if (!isAuthenticated()) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const newCustomer = await createCustomer(customerData);
+      setCustomers(prevCustomers => [...prevCustomers, newCustomer]);
+      return newCustomer;
+    } catch (err) {
+      console.error('Error adding customer:', err);
+      setError('Failed to add customer. Please try again.');
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, logout]);
+
+  const addCustomerTab = useCallback(async (tabData) => {
+    if (!isAuthenticated()) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      return await createCustomerTab(tabData);
+    } catch (err) {
+      console.error('Error creating customer tab:', err);
+      setError('Failed to create customer tab. Please try again.');
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, logout]);
+
+  const searchSales = useCallback(async (params) => {
+    if (!isAuthenticated()) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await apiSearchSales(params);
+      setSales(response.results || []);
+      setSummary(response.summary || { total_done: 0, total_pending: 0 });
+      setTotalSalesCount(response.count || 0);
+      return response;
+    } catch (err) {
+      console.error('Error searching sales:', err);
+      setError('Failed to search sales. Please try again.');
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, logout]);
 
   const refreshSales = useCallback(() => {
-    queryClient.invalidateQueries('sales');
-  }, [queryClient]);
+    fetchSales();
+  }, [fetchSales]);
 
   const refreshCustomers = useCallback(() => {
-    queryClient.invalidateQueries('customers');
-  }, [queryClient]);
+    fetchCustomers();
+  }, [fetchCustomers]);
 
   return (
     <SalesContext.Provider value={{ 
       sales,
       customers,
-      loading: salesLoading || customersLoading,
-      error: salesError || customersError,
+      loading: isLoading,
+      error,
       summary,
       addMultipleSales,
       updatePaymentStatus,
       fetchCustomers: refreshCustomers,
-      fetchSales: refetchSales,
+      fetchSales,
       addCustomer,
       addCustomerTab,
       refreshSales,
