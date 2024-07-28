@@ -91,11 +91,16 @@ export const CustomerProvider = ({ children }) => {
     setIsLoading(true);
     setError(null);
     try {
-      const updatedCustomer = await api.patch(`/customers/${customerId}/`, { tab_limit: newLimit });
+      console.log(`Attempting to update tab limit for customer ${customerId} to ${newLimit}`);
+      const response = await api.patch(`/customers/${customerId}/`, { tab_limit: newLimit });
+      console.log('Update response:', response.data);
       setCustomers(prevCustomers => 
         prevCustomers.map(c => c.id === customerId ? { ...c, tab_limit: newLimit } : c)
       );
-      return updatedCustomer;
+      setCustomerTabs(prevTabs => 
+        prevTabs.map(tab => tab.customer_id === customerId ? { ...tab, tab_limit: newLimit } : tab)
+      );
+      return response.data;
     } catch (err) {
       console.error('Error updating customer tab limit:', err);
       setError('Failed to update customer tab limit. Please try again.');

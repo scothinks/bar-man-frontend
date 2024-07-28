@@ -37,6 +37,11 @@ const CustomerTabs = () => {
     }
   }, [user, refreshCustomerData]);
 
+  useEffect(() => {
+    console.log('Customers:', customers);
+    console.log('Customer Tabs:', customerTabs);
+  }, [customers, customerTabs]);
+
   const handleRefresh = () => {
     refreshCustomerData();
   };
@@ -53,9 +58,12 @@ const CustomerTabs = () => {
     }
   };
 
-  const handleOpenDialog = (customer) => {
-    setSelectedCustomer(customer);
-    setNewTabLimit(customer.tab_limit ? customer.tab_limit.toString() : '0');
+  const handleOpenDialog = (tab) => {
+    setSelectedCustomer({
+      id: tab.customer_id, 
+      name: tab.customer_name
+    });
+    setNewTabLimit(tab.tab_limit ? tab.tab_limit.toString() : '0');
     setDialogOpen(true);
   };
 
@@ -64,13 +72,15 @@ const CustomerTabs = () => {
     setSelectedCustomer(null);
     setNewTabLimit('');
   };
-
+  
   const handleUpdateTabLimit = async () => {
     try {
+      console.log(`Updating tab limit for customer ${selectedCustomer.id} to ${newTabLimit}`);
       await updateCustomerTabLimit(selectedCustomer.id, parseFloat(newTabLimit));
       setSnackbar({ open: true, message: 'Tab limit updated successfully', severity: 'success' });
       handleCloseDialog();
-      refreshCustomerData();
+      await refreshCustomerData();
+      console.log('Customer data after refresh:', customers, customerTabs);
     } catch (error) {
       console.error('Failed to update tab limit:', error);
       setSnackbar({ open: true, message: 'Failed to update tab limit. Please try again.', severity: 'error' });
@@ -82,6 +92,10 @@ const CustomerTabs = () => {
       return;
     }
     setSnackbar({ ...snackbar, open: false });
+  };
+
+  const formatCurrency = (value) => {
+    return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(value);
   };
 
   if (!user) return <Typography>Please log in to view customer tabs.</Typography>;
@@ -143,8 +157,8 @@ const CustomerTabs = () => {
               customerTabs.map((tab) => (
                 <TableRow key={tab.id}>
                   <TableCell>{tab.customer_name}</TableCell>
-                  <TableCell align="right">{tab.amount}</TableCell>
-                  <TableCell align="right">{tab.tab_limit || 'Not set'}</TableCell>
+                  <TableCell align="right">{formatCurrency(tab.amount)}</TableCell>
+                  <TableCell align="right">{tab.tab_limit ? formatCurrency(tab.tab_limit) : 'Not set'}</TableCell>
                   <TableCell align="right">
                     <Button onClick={() => handleOpenDialog(tab)}>
                       Update Limit

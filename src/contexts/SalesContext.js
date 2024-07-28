@@ -65,8 +65,9 @@ export const SalesProvider = ({ children }) => {
     setIsLoading(true);
     setError(null);
     try {
-      await createMultipleSales(salesData);
+      const response = await createMultipleSales(salesData);
       await fetchSales();
+      return response; 
     } catch (err) {
       console.error('Error adding sales:', err);
       setError('Failed to add sales. Please try again.');

@@ -35,7 +35,7 @@ const Sales = () => {
     totalSalesCount
   } = useSales();
   const { inventoryItems = [] } = useInventory();
-  const { customers, addCustomer } = useCustomer();
+  const { customers, customerTabs, addCustomer } = useCustomer();
   const [newSales, setNewSales] = useState([{ item: '', quantity: 1 }]);
   const [newCustomer, setNewCustomer] = useState({ name: '', phone_number: '' });
   const [currentPage, setCurrentPage] = useState(0);
@@ -104,6 +104,11 @@ const Sales = () => {
   };
 
   const handleAddSales = async () => {
+    if (!checkTabLimit(newSales)) {
+      setSnackbar({ open: true, message: "This sale would exceed the customer's tab limit", severity: 'error' });
+      return;
+    }
+  
     try {
       await addMultipleSales(newSales);
       setNewSales([{ item: '', quantity: 1 }]);
@@ -111,12 +116,31 @@ const Sales = () => {
       setSnackbar({ open: true, message: 'Sales added successfully', severity: 'success' });
     } catch (error) {
       console.error('Failed to add sales:', error);
-      setSnackbar({ open: true, message: 'Failed to add sales. Please try again.', severity: 'error' });
-      if (error.message === 'Authentication required' || (error.response && error.response.status === 401)) {
+      let errorMessage = 'Failed to add sales. Please try again.';
+      if (error.response && error.response.data && error.response.data.error) {
+        errorMessage = error.response.data.error;
+      }
+      setSnackbar({ open: true, message: errorMessage, severity: 'error' });
+      if (error.response && error.response.status === 401) {
         logout();
       }
     }
   };
+
+  const checkTabLimit = useCallback((sales) => {
+    const customer = customers.find(c => c.id === sales[0].customer);
+    if (!customer) return true; 
+  
+    const totalAmount = sales.reduce((sum, sale) => {
+      const item = inventoryItems.find(i => i.id === sale.item);
+      return sum + (item ? item.cost * sale.quantity : 0);
+    }, 0);
+  
+    const currentTab = customerTabs.find(tab => tab.customer_id === customer.id);
+    const currentAmount = currentTab ? currentTab.amount : 0;
+  
+    return (currentAmount + totalAmount) <= customer.tab_limit;
+  }, [customers, inventoryItems, customerTabs]);
 
   const handleAddCustomer = async () => {
     try {
