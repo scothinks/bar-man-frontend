@@ -1,11 +1,11 @@
-import React, { useEffect, useCallback, useState, useMemo } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { useSales } from '../contexts/SalesContext';
 import { useInventory } from '../contexts/InventoryContext';
 import { useCustomer } from '../contexts/CustomerContext';
 import { useAuth } from '../contexts/AuthContext';
-import { 
-  Button, Typography, 
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, 
+import {
+  Button, Typography,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
   CircularProgress, Box, TextField, Select, MenuItem, FormControl, InputLabel,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar, IconButton
 } from '@mui/material';
@@ -14,6 +14,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { enUS } from 'date-fns/locale';
 import { subDays } from 'date-fns';
 import { AddCircle, RemoveCircle } from '@mui/icons-material';
+import ErrorAlert from './ErrorAlert';
 
 const formatCost = (cost) => {
   if (cost === null || cost === undefined) return 'N/A';
@@ -24,11 +25,11 @@ const formatCost = (cost) => {
 
 const Sales = () => {
   const { user, checkAuth, logout } = useAuth();
-  const {  
+  const {
     sales,
-    loading, 
-    error, 
-    updatePaymentStatus, 
+    loading,
+    error: salesError,
+    updatePaymentStatus,
     addMultipleSales,
     searchSales,
     summary,
@@ -48,6 +49,9 @@ const Sales = () => {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [searchTerm, setSearchTerm] = useState('');
   const itemsPerPage = 5;
+  const [error, setError] = useState(null);
+
+  const displayError = salesError || error;
 
   useEffect(() => {
     checkAuth();
@@ -76,7 +80,7 @@ const Sales = () => {
       })
       .catch((error) => {
         console.error('Error fetching sales:', error);
-        setSnackbar({ open: true, message: 'Failed to fetch sales. Please try again.', severity: 'error' });
+        setError('Failed to fetch sales. Please try again.');
         if (error.message === 'Authentication required' || (error.response && error.response.status === 401)) {
           logout();
         }
@@ -96,19 +100,16 @@ const Sales = () => {
       setSnackbar({ open: true, message: 'Payment status updated successfully', severity: 'success' });
     } catch (error) {
       console.error('Failed to update payment status:', error);
-      setSnackbar({ open: true, message: 'Failed to update payment status. Please try again.', severity: 'error' });
-      if (error.message === 'Authentication required' || (error.response && error.response.status === 401)) {
-        logout();
-      }
+      setError('Failed to update payment status. Please try again.');
     }
   };
 
   const handleAddSales = async () => {
     if (!checkTabLimit(newSales)) {
-      setSnackbar({ open: true, message: "This sale would exceed the customer's tab limit", severity: 'error' });
+      setError("This sale would exceed the customer's tab limit");
       return;
     }
-  
+
     try {
       await addMultipleSales(newSales);
       setNewSales([{ item: '', quantity: 1 }]);
@@ -120,25 +121,26 @@ const Sales = () => {
       if (error.response && error.response.data && error.response.data.error) {
         errorMessage = error.response.data.error;
       }
-      setSnackbar({ open: true, message: errorMessage, severity: 'error' });
-      if (error.response && error.response.status === 401) {
-        logout();
-      }
+      setError(errorMessage);
     }
+  };
+
+  const handleCloseError = () => {
+    setError(null);
   };
 
   const checkTabLimit = useCallback((sales) => {
     const customer = customers.find(c => c.id === sales[0].customer);
-    if (!customer) return true; 
-  
+    if (!customer) return true;
+
     const totalAmount = sales.reduce((sum, sale) => {
       const item = inventoryItems.find(i => i.id === sale.item);
       return sum + (item ? item.cost * sale.quantity : 0);
     }, 0);
-  
+
     const currentTab = customerTabs.find(tab => tab.customer_id === customer.id);
     const currentAmount = currentTab ? currentTab.amount : 0;
-  
+
     return (currentAmount + totalAmount) <= customer.tab_limit;
   }, [customers, inventoryItems, customerTabs]);
 
@@ -151,10 +153,7 @@ const Sales = () => {
       setSnackbar({ open: true, message: 'Customer added successfully', severity: 'success' });
     } catch (error) {
       console.error('Failed to add customer:', error);
-      setSnackbar({ open: true, message: 'Failed to add customer. Please try again.', severity: 'error' });
-      if (error.message === 'Authentication required' || (error.response && error.response.status === 401)) {
-        logout();
-      }
+      setError('Failed to add customer. Please try again.');
     }
   };
 
@@ -163,7 +162,7 @@ const Sales = () => {
       fetchSalesData(currentPage + 1);
     }
   };
-  
+
   const handlePreviousPage = () => {
     if (hasPreviousPage) {
       fetchSalesData(currentPage - 1);
@@ -179,13 +178,8 @@ const Sales = () => {
         setEndDate(null);
         break;
       case 'day':
-      case 'last 24 hours':
         setStartDate(subDays(today, 1));
         setEndDate(today);
-        break;
-      case 'yesterday':
-        setStartDate(subDays(today, 1));
-        setEndDate(subDays(today, 1));
         break;
       case 'week':
         setStartDate(subDays(today, 7));
@@ -233,169 +227,161 @@ const Sales = () => {
     setNewSales(updatedSales);
   };
 
-  const filteredSales = useMemo(() => {
-    return sales;
-  }, [sales]);
-
-  if (!user) return <Typography>Please log in to view sales.</Typography>;
-  if (loading) return <CircularProgress />;
-  if (error) return <Alert severity="error">Error: {error}</Alert>;
-
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={enUS}>
-      <Box sx={{ display: 'flex', flexDirection: 'row', height: '100vh', padding: 2 }}>
-        <Box sx={{ flexGrow: 1, overflowY: 'auto', mr: 2 }}>
-          <Typography variant="h4" gutterBottom>Sales List</Typography>
-          <Typography variant="h6" gutterBottom>
-            Total Done: {formatCost(summary.total_done)} | Total Pending: {formatCost(summary.total_pending)}
-          </Typography>
-          <Box sx={{ display: 'flex', mb: 2, alignItems: 'center' }}>
-            <TextField
-              label="Search Customer or Item"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              sx={{ mr: 2 }}
-            />
-            <FormControl sx={{ minWidth: 120, mr: 2 }}>
-              <InputLabel>Date Filter</InputLabel>
-              <Select value={dateFilter} onChange={(e) => handleDateFilterChange(e.target.value)}>
-                <MenuItem value="all">All time</MenuItem>
-                <MenuItem value="day">Last 24 hours</MenuItem>
-                <MenuItem value="week">Last 7 days</MenuItem>
-                <MenuItem value="month">Last 30 days</MenuItem>
-                <MenuItem value="year">Last Year</MenuItem>
-                <MenuItem value="custom">Custom</MenuItem>
-              </Select>
-            </FormControl>
-            {dateFilter === 'custom' && (
+      {!user ? (
+        <Typography>Please log in to view sales.</Typography>
+      ) : (
+        <Box sx={{ display: 'flex', flexDirection: 'row', height: '100vh', padding: 2 }}>
+          <Box sx={{ flexGrow: 1, overflowY: 'auto', mr: 2 }}>
+            <Typography variant="h4" gutterBottom>Sales List</Typography>
+            <Typography variant="h6" gutterBottom>
+              Total Done: {formatCost(summary.total_done)} | Total Pending: {formatCost(summary.total_pending)}
+            </Typography>
+            <Box sx={{ display: 'flex', mb: 2, alignItems: 'center' }}>
+              <TextField
+                label="Search Customer or Item"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                sx={{ mr: 2 }}
+              />
+              <FormControl sx={{ minWidth: 120, mr: 2 }}>
+                <InputLabel>Date Filter</InputLabel>
+                <Select value={dateFilter} onChange={(e) => handleDateFilterChange(e.target.value)}>
+                  <MenuItem value="all">All time</MenuItem>
+                  <MenuItem value="day">Last 24 hours</MenuItem>
+                  <MenuItem value="week">Last 7 days</MenuItem>
+                  <MenuItem value="month">Last 30 days</MenuItem>
+                  <MenuItem value="year">Last Year</MenuItem>
+                  <MenuItem value="custom">Custom</MenuItem>
+                </Select>
+              </FormControl>
+              {dateFilter === 'custom' && (
+                <>
+                  <DatePicker
+                    label="Start Date"
+                    value={startDate}
+                    onChange={(newDate) => handleCustomDateChange(newDate, endDate)}
+                    renderInput={(params) => <TextField {...params} />}
+                  />
+                  <DatePicker
+                    label="End Date"
+                    value={endDate}
+                    onChange={(newDate) => handleCustomDateChange(startDate, newDate)}
+                    renderInput={(params) => <TextField {...params} sx={{ ml: 2 }} />}
+                  />
+                </>
+              )}
+            </Box>
+            {sales.length > 0 ? (
+              <TableContainer component={Paper}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Item</TableCell>
+                      <TableCell>Quantity</TableCell>
+                      <TableCell>Amount</TableCell>
+                      <TableCell>Payment Status</TableCell>
+                      <TableCell>Customer</TableCell>
+                      <TableCell>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {sales.map((sale) => (
+                      <TableRow key={sale.id}>
+                        <TableCell>{sale.item_name}</TableCell>
+                        <TableCell>{sale.quantity}</TableCell>
+                        <TableCell>{formatCost(sale.total_amount)}</TableCell>
+                        <TableCell>{sale.payment_status}</TableCell>
+                        <TableCell>{sale.customer_name}</TableCell>
+                        <TableCell>
+                          <Button 
+                            variant="contained"
+                            color={sale.payment_status === 'PENDING' ? 'error' : 'primary'}
+                            onClick={() => handleUpdatePaymentStatus(sale.id, sale.payment_status === 'PENDING' ? 'DONE' : 'PENDING')}
+                          >
+                            {sale.payment_status === 'PENDING' ? 'Mark as Paid' : 'Mark as Pending'}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <Typography>No sales found for the selected criteria.</Typography>
+            )}
+            {sales.length > 0 && (
               <>
-                <DatePicker
-                  label="Start Date"
-                  value={startDate}
-                  onChange={(newDate) => handleCustomDateChange(newDate, endDate)}
-                  renderInput={(params) => <TextField {...params} />}
-                />
-                <DatePicker
-                  label="End Date"
-                  value={endDate}
-                  onChange={(newDate) => handleCustomDateChange(startDate, newDate)}
-                  renderInput={(params) => <TextField {...params} sx={{ ml: 2 }} />}
-                />
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
+                  <Button onClick={handlePreviousPage} disabled={!hasPreviousPage}>Previous</Button>
+                  <Button onClick={handleNextPage} disabled={!hasNextPage}>Next</Button>
+                </Box>
+                <Typography>
+                  Showing {currentPage * itemsPerPage + 1} - {Math.min((currentPage + 1) * itemsPerPage, totalSalesCount)} of {totalSalesCount} sales
+                </Typography>
               </>
             )}
           </Box>
-          {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
-              <CircularProgress />
-            </Box>
-          ) : sales.length > 0 ? (
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Item</TableCell>
-                    <TableCell>Quantity</TableCell>
-                    <TableCell>Amount</TableCell>
-                    <TableCell>Payment Status</TableCell>
-                    <TableCell>Customer</TableCell>
-                    <TableCell>Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {sales.map((sale) => (
-                    <TableRow key={sale.id}>
-                      <TableCell>{sale.item_name}</TableCell>
-                      <TableCell>{sale.quantity}</TableCell>
-                      <TableCell>{formatCost(sale.total_amount)}</TableCell>
-                      <TableCell>{sale.payment_status}</TableCell>
-                      <TableCell>{sale.customer_name}</TableCell>
-                      <TableCell>
-                        <Button 
-                          variant="contained"
-                          color={sale.payment_status === 'PENDING' ? 'error' : 'primary'}
-                          onClick={() => handleUpdatePaymentStatus(sale.id, sale.payment_status === 'PENDING' ? 'DONE' : 'PENDING')}
-                        >
-                          {sale.payment_status === 'PENDING' ? 'Mark as Paid' : 'Mark as Pending'}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          ) : (
-            <Typography>No sales found for the selected criteria.</Typography>
-          )}
-          {sales.length > 0 && (
-            <>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
-                <Button onClick={handlePreviousPage} disabled={!hasPreviousPage}>Previous</Button>
-                <Button onClick={handleNextPage} disabled={!hasNextPage}>Next</Button>
+          <Box sx={{ width: '300px' }}>
+            <Typography variant="h6" gutterBottom>Add New Sales</Typography>
+            {newSales.map((sale, index) => (
+              <Box key={index} sx={{ mb: 2 }}>
+                <FormControl fullWidth margin="normal">
+                  <InputLabel>Item</InputLabel>
+                  <Select
+                    value={sale.item}
+                    onChange={(e) => handleSaleChange(index, 'item', e.target.value)}
+                  >
+                    {inventoryItems.map((item) => (
+                      <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <TextField
+                  fullWidth
+                  label="Quantity"
+                  type="number"
+                  value={sale.quantity}
+                  onChange={(e) => handleSaleChange(index, 'quantity', parseInt(e.target.value))}
+                  margin="normal"
+                />
+                <IconButton onClick={() => removeSaleField(index)} color="secondary">
+                  <RemoveCircle />
+                </IconButton>
               </Box>
-              <Typography>
-                Showing {currentPage * itemsPerPage + 1} - {Math.min((currentPage + 1) * itemsPerPage, totalSalesCount)} of {totalSalesCount} sales
-              </Typography>
-            </>
-          )}
-        </Box>
-        <Box sx={{ width: '300px' }}>
-          <Typography variant="h6" gutterBottom>Add New Sales</Typography>
-          {newSales.map((sale, index) => (
-            <Box key={index} sx={{ mb: 2 }}>
-              <FormControl fullWidth margin="normal">
-                <InputLabel>Item</InputLabel>
-                <Select
-                  value={sale.item}
-                  onChange={(e) => handleSaleChange(index, 'item', e.target.value)}
-                >
-                  {inventoryItems.map((item) => (
-                    <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <TextField
-                fullWidth
-                label="Quantity"
-                type="number"
-                value={sale.quantity}
-                onChange={(e) => handleSaleChange(index, 'quantity', parseInt(e.target.value))}
-                margin="normal"
-              />
-              <IconButton onClick={() => removeSaleField(index)} color="secondary">
-                <RemoveCircle />
-              </IconButton>
-            </Box>
-          ))}
-          <Button onClick={addNewSaleField} variant="outlined" fullWidth startIcon={<AddCircle />} sx={{ mb: 2 }}>
-            Add Another Item
-          </Button>
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Customer</InputLabel>
-            <Select
-              value={newSales[0].customer || ''}
-              onChange={(e) => setNewSales(newSales.map(sale => ({ ...sale, customer: e.target.value })))}
-            >
-              <MenuItem value="">
-                <em>None</em>
-              </MenuItem>
-              {customers.map((customer) => (
-                <MenuItem key={customer.id} value={customer.id}>{customer.name}</MenuItem>
-              ))}
-              <MenuItem value="new">
-                <em>Add New Customer</em>
-              </MenuItem>
-            </Select>
-          </FormControl>
-          {newSales[0].customer === 'new' && (
-            <Button onClick={() => setOpenNewCustomerDialog(true)} fullWidth variant="outlined" sx={{ mt: 1 }}>
-              Add New Customer
+            ))}
+            <Button onClick={addNewSaleField} variant="outlined" fullWidth startIcon={<AddCircle />} sx={{ mb: 2 }}>
+              Add Another Item
             </Button>
-          )}
-          <Button onClick={handleAddSales} variant="contained" fullWidth sx={{ mt: 2 }}>
-            Add Sales
-          </Button>
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Customer</InputLabel>
+              <Select
+                value={newSales[0].customer || ''}
+                onChange={(e) => setNewSales(newSales.map(sale => ({ ...sale, customer: e.target.value })))}
+              >
+                <MenuItem value="">
+                  <em>None</em>
+                </MenuItem>
+                {customers.map((customer) => (
+                  <MenuItem key={customer.id} value={customer.id}>{customer.name}</MenuItem>
+                ))}
+                <MenuItem value="new">
+                  <em>Add New Customer</em>
+                </MenuItem>
+              </Select>
+            </FormControl>
+            {newSales[0].customer === 'new' && (
+              <Button onClick={() => setOpenNewCustomerDialog(true)} fullWidth variant="outlined" sx={{ mt: 1 }}>
+                Add New Customer
+              </Button>
+            )}
+            <Button onClick={handleAddSales} variant="contained" fullWidth sx={{ mt: 2 }}>
+              Add Sales
+            </Button>
+          </Box>
         </Box>
-      </Box>
+      )}
       <Dialog open={openNewCustomerDialog} onClose={() => setOpenNewCustomerDialog(false)}>
         <DialogTitle>Add New Customer</DialogTitle>
         <DialogContent>
@@ -420,6 +406,7 @@ const Sales = () => {
           <Button onClick={handleAddCustomer}>Add</Button>
         </DialogActions>
       </Dialog>
+      <ErrorAlert error={displayError} onClose={handleCloseError} />
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
@@ -429,6 +416,22 @@ const Sales = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
+      {loading && (
+        <Box sx={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: 'rgba(255, 255, 255, 0.7)',
+          zIndex: 9999,
+        }}>
+          <CircularProgress />
+        </Box>
+      )}
     </LocalizationProvider>
   );
 };
