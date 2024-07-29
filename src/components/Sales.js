@@ -33,11 +33,13 @@ const Sales = () => {
     addMultipleSales,
     searchSales,
     summary,
-    totalSalesCount
+    totalSalesCount,
+    updateCustomerTabLimit,
+    updateSaleCustomer
   } = useSales();
   const { inventoryItems = [] } = useInventory();
-  const { customers, customerTabs, addCustomer } = useCustomer();
-  const [newSales, setNewSales] = useState([{ item: '', quantity: 1 }]);
+  const { customers, addCustomer } = useCustomer();
+  const [newSales, setNewSales] = useState([{ item: '', quantity: 1, customer: '' }]);
   const [newCustomer, setNewCustomer] = useState({ name: '', phone_number: '' });
   const [currentPage, setCurrentPage] = useState(0);
   const [hasNextPage, setHasNextPage] = useState(false);
@@ -105,23 +107,68 @@ const Sales = () => {
   };
 
   const handleAddSales = async () => {
-    if (!checkTabLimit(newSales)) {
-      setError("This sale would exceed the customer's tab limit");
-      return;
-    }
-
     try {
-      await addMultipleSales(newSales);
-      setNewSales([{ item: '', quantity: 1 }]);
+      console.log('Attempting to add sales:', newSales);
+      const salesData = newSales.map(sale => ({
+        ...sale,
+        customer: sale.customer || null,  
+        recorded_by: user.id
+      }));
+      await addMultipleSales(salesData);
+      setNewSales([{ item: '', quantity: 1, customer: '' }]);
       fetchSalesData(0, true);
       setSnackbar({ open: true, message: 'Sales added successfully', severity: 'success' });
     } catch (error) {
       console.error('Failed to add sales:', error);
-      let errorMessage = 'Failed to add sales. Please try again.';
-      if (error.response && error.response.data && error.response.data.error) {
-        errorMessage = error.response.data.error;
+      if (error.response && error.response.data) {
+        console.error('Error response data:', error.response.data);
+        let errorMessage = '';
+        if (error.response.data.error) {
+          errorMessage = error.response.data.error;
+        } else if (error.response.data.non_field_errors) {
+          errorMessage = error.response.data.non_field_errors[0];
+        } else {
+          errorMessage = 'Failed to add sales. Please try again.';
+        }
+        setError(errorMessage);
+        setSnackbar({ open: true, message: errorMessage, severity: 'error' });
+        
+        if (errorMessage.includes("Insufficient inventory")) {
+          const { item_name, available, requested } = error.response.data;
+          setError(`Not enough ${item_name} in store. Available: ${available}, Requested: ${requested}`);
+          setSnackbar({ open: true, message: `Insufficient inventory for ${item_name}`, severity: 'error' });
+        } else if (errorMessage.includes("Tab limit exceeded")) {
+          const { customer_name, current_limit, required_limit, customer_id } = error.response.data;
+          console.log(`Tab limit exceeded for customer ${customer_name} (ID: ${customer_id}). Current limit: ${current_limit}, Required: ${required_limit}`);
+          const shouldUpdate = window.confirm(
+            `${customer_name} has reached their tab limit of ${formatCost(current_limit)}. ` +
+            `This sale requires a limit of ${formatCost(required_limit)}. ` +
+            `Would you like to update the tab limit?`
+          );
+          if (shouldUpdate) {
+            try {
+              console.log(`Attempting to update tab limit for customer ${customer_id} to ${required_limit}`);
+              await updateCustomerTabLimit(customer_id, required_limit);
+              console.log('Tab limit updated, retrying sale...');
+              await addMultipleSales(newSales);
+              setNewSales([{ item: '', quantity: 1 }]);
+              fetchSalesData(0, true);
+              setSnackbar({ open: true, message: 'Tab limit updated and sales added successfully', severity: 'success' });
+            } catch (updateError) {
+              console.error('Failed to update tab limit and add sales:', updateError);
+              setError('Failed to update tab limit and add sales. Please try again.');
+              setSnackbar({ open: true, message: 'Failed to update tab limit and add sales', severity: 'error' });
+            }
+          } else {
+            setError(`Sale could not be completed because ${customer_name} has reached their tab limit.`);
+            setSnackbar({ open: true, message: `Sale cancelled due to tab limit`, severity: 'warning' });
+          }
+        }
+      } else {
+        console.error('Unexpected error structure:', error);
+        setError('An unexpected error occurred. Please try again.');
+        setSnackbar({ open: true, message: 'An unexpected error occurred', severity: 'error' });
       }
-      setError(errorMessage);
     }
   };
 
@@ -129,24 +176,11 @@ const Sales = () => {
     setError(null);
   };
 
-  const checkTabLimit = useCallback((sales) => {
-    const customer = customers.find(c => c.id === sales[0].customer);
-    if (!customer) return true;
-
-    const totalAmount = sales.reduce((sum, sale) => {
-      const item = inventoryItems.find(i => i.id === sale.item);
-      return sum + (item ? item.cost * sale.quantity : 0);
-    }, 0);
-
-    const currentTab = customerTabs.find(tab => tab.customer_id === customer.id);
-    const currentAmount = currentTab ? currentTab.amount : 0;
-
-    return (currentAmount + totalAmount) <= customer.tab_limit;
-  }, [customers, inventoryItems, customerTabs]);
-
   const handleAddCustomer = async () => {
     try {
-      const addedCustomer = await addCustomer(newCustomer);
+      const tabLimit = prompt("Enter tab limit for the new customer (optional):");
+      const customerData = { ...newCustomer, tab_limit: tabLimit ? parseFloat(tabLimit) : 0 };
+      const addedCustomer = await addCustomer(customerData);
       setNewSales(newSales.map(sale => ({ ...sale, customer: addedCustomer.id })));
       setNewCustomer({ name: '', phone_number: '' });
       setOpenNewCustomerDialog(false);
@@ -227,6 +261,20 @@ const Sales = () => {
     setNewSales(updatedSales);
   };
 
+  const handleAddCustomerToSale = async (saleId) => {
+    const customerId = prompt("Enter customer ID:");
+    if (customerId) {
+      try {
+        await updateSaleCustomer(saleId, customerId);
+        fetchSalesData(currentPage, true);
+        setSnackbar({ open: true, message: 'Customer added to sale successfully', severity: 'success' });
+      } catch (error) {
+        console.error('Failed to add customer to sale:', error);
+        setError('Failed to add customer to sale. Please try again.');
+      }
+    }
+  };
+
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={enUS}>
       {!user ? (
@@ -240,7 +288,7 @@ const Sales = () => {
             </Typography>
             <Box sx={{ display: 'flex', mb: 2, alignItems: 'center' }}>
               <TextField
-                label="Search Customer or Item"
+                label="Search Customer, Item, or Admin"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 sx={{ mr: 2 }}
@@ -283,6 +331,7 @@ const Sales = () => {
                       <TableCell>Amount</TableCell>
                       <TableCell>Payment Status</TableCell>
                       <TableCell>Customer</TableCell>
+                      <TableCell>Recorded By</TableCell>
                       <TableCell>Actions</TableCell>
                     </TableRow>
                   </TableHead>
@@ -293,7 +342,8 @@ const Sales = () => {
                         <TableCell>{sale.quantity}</TableCell>
                         <TableCell>{formatCost(sale.total_amount)}</TableCell>
                         <TableCell>{sale.payment_status}</TableCell>
-                        <TableCell>{sale.customer_name}</TableCell>
+                        <TableCell>{sale.customer_name || 'N/A'}</TableCell>
+                        <TableCell>{sale.recorded_by_username}</TableCell>
                         <TableCell>
                           <Button 
                             variant="contained"
@@ -302,6 +352,14 @@ const Sales = () => {
                           >
                             {sale.payment_status === 'PENDING' ? 'Mark as Paid' : 'Mark as Pending'}
                           </Button>
+                          {!sale.customer_name && (
+                            <Button
+                              variant="outlined"
+                              onClick={() => handleAddCustomerToSale(sale.id)}
+                            >
+                              Add Customer
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}

@@ -7,6 +7,8 @@ import {
   createCustomerTab, 
   getSales,
   searchSales as apiSearchSales,
+  updateCustomerTabLimit as apiUpdateCustomerTabLimit,
+  updateSaleCustomer as apiUpdateSaleCustomer
 } from '../services/api';
 import { useAuth } from './AuthContext';
 
@@ -60,22 +62,70 @@ export const SalesProvider = ({ children }) => {
     }
   }, [isAuthenticated, logout]);
 
-  const addMultipleSales = useCallback(async (salesData) => {
+  const updateCustomerTabLimit = useCallback(async (customerId, newLimit) => {
     if (!isAuthenticated()) return;
     setIsLoading(true);
     setError(null);
     try {
-      const response = await createMultipleSales(salesData);
-      await fetchSales();
-      return response; 
+      await apiUpdateCustomerTabLimit(customerId, newLimit);
     } catch (err) {
-      console.error('Error adding sales:', err);
-      setError('Failed to add sales. Please try again.');
+      console.error('Error updating customer tab limit:', err);
+      setError('Failed to update customer tab limit. Please try again.');
       if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
         logout();
       }
       throw err;
     } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, logout, setError, setIsLoading]);
+
+  const addMultipleSales = useCallback(async (salesData) => {
+    if (!isAuthenticated()) {
+      console.log('User not authenticated, aborting addMultipleSales');
+      return;
+    }
+    console.log('Starting addMultipleSales with data:', salesData);
+    setIsLoading(true);
+    setError(null);
+    try {
+      console.log('Calling createMultipleSales API');
+      const response = await createMultipleSales(salesData);
+      console.log('createMultipleSales API response:', response);
+      
+      console.log('Fetching updated sales data');
+      await fetchSales();
+      console.log('Sales data fetched successfully');
+      
+      return response; 
+    } catch (err) {
+      console.error('Error adding sales:', err);
+      if (err.response) {
+        console.error('Error response:', err.response);
+        console.error('Error response data:', err.response.data);
+        console.error('Error response status:', err.response.status);
+        
+        if (err.response.data.error) {
+          setError(err.response.data.error);
+        } else if (err.response.data.non_field_errors) {
+          setError(err.response.data.non_field_errors[0]);
+        } else {
+          setError('Failed to add sales. Please try again.');
+        }
+      } else if (err.request) {
+        console.error('Error request:', err.request);
+        setError('No response received from server. Please try again.');
+      } else {
+        console.error('Error message:', err.message);
+        setError('An error occurred. Please try again.');
+      }
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        console.log('Authentication error detected, logging out');
+        logout();
+      }
+      throw err;
+    } finally {
+      console.log('Finished addMultipleSales process');
       setIsLoading(false);
     }
   }, [isAuthenticated, logout, fetchSales]);
@@ -137,12 +187,34 @@ export const SalesProvider = ({ children }) => {
     }
   }, [isAuthenticated, logout]);
 
+  const updateSaleCustomer = useCallback(async (saleId, customerId) => {
+    if (!isAuthenticated()) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      await apiUpdateSaleCustomer(saleId, customerId);
+      await fetchSales();
+    } catch (err) {
+      console.error('Error updating sale customer:', err);
+      setError('Failed to update sale customer. Please try again.');
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, logout, fetchSales]);
+
   const searchSales = useCallback(async (params) => {
     if (!isAuthenticated()) return;
     setIsLoading(true);
     setError(null);
     try {
-      const response = await apiSearchSales(params);
+      const response = await apiSearchSales({
+        ...params,
+        admin: params.customer,
+      });
       setSales(response.results || []);
       setSummary(response.summary || { total_done: 0, total_pending: 0 });
       setTotalSalesCount(response.count || 0);
@@ -173,6 +245,7 @@ export const SalesProvider = ({ children }) => {
       customers,
       loading: isLoading,
       error,
+      setError,
       summary,
       addMultipleSales,
       updatePaymentStatus,
@@ -180,9 +253,11 @@ export const SalesProvider = ({ children }) => {
       fetchSales,
       addCustomer,
       addCustomerTab,
+      updateCustomerTabLimit,
       refreshSales,
       totalSalesCount,
-      searchSales,  
+      searchSales,
+      updateSaleCustomer,
     }}>
       {children}
     </SalesContext.Provider>

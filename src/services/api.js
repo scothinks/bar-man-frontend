@@ -12,8 +12,6 @@ const api = axios.create({
   maxBodyLength: Infinity,
 });
 
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
 export const setAuthToken = (token) => {
   if (token) {
     api.defaults.headers.common['Authorization'] = `Token ${token}`;
@@ -161,9 +159,17 @@ export const getSales = (params) => apiCall('get', '/sales/', null, params);
 export const createSale = (saleData) => apiCall('post', '/sales/', saleData);
 export const createMultipleSales = (salesData) => apiCall('post', '/sales/multiple/', salesData);
 export const updateSalePaymentStatus = (saleId, status) => apiCall('patch', `/sales/${saleId}/update_payment_status/`, { payment_status: status });
+export const updateSaleCustomer = async (saleId, customerId) => {
+  return await apiCall('patch', `/sales/${saleId}/update_customer/`, { customer: customerId });
+};
 export const searchSales = async (params) => {
   try {
-    const response = await api.get('/sales/search/', { params });
+    const response = await api.get('/sales/search/', { 
+      params: {
+        ...params,
+        admin: params.admin,
+      } 
+    });
     console.log('Search sales response:', response.data);
     return response.data;
   } catch (error) {
@@ -204,6 +210,7 @@ export const getCustomers = (params) => apiCall('get', '/customers/', null, para
 export const createCustomer = (customerData) => apiCall('post', '/customers/', customerData);
 export const getCustomerTabs = (params) => apiCall('get', '/customers/tabs/', null, params);
 export const createCustomerTab = (tabData) => apiCall('post', '/customers/tabs/', tabData);
+export const updateCustomerTabLimit = (customerId, newLimit) => apiCall('patch', `/customers/${customerId}/update_tab_limit/`, { tab_limit: newLimit });
 
 // User management
 export const getUsers = () => apiCall('get', '/users/');
