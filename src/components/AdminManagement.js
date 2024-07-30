@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getUsers, createUser } from '../services/api';
+import { getUsers, createUser, updateUser } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, 
   Typography, TextField, Button, Checkbox, FormControlLabel, CircularProgress, Alert, Snackbar,
-  Card, CardContent, Grid, Tooltip, Skeleton, Box
+  Card, CardContent, Grid, Tooltip, Skeleton, Box, Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import EditIcon from '@mui/icons-material/Edit';
 
 const theme = createTheme({
   palette: {
@@ -20,6 +21,18 @@ const theme = createTheme({
   },
   typography: {
     fontFamily: 'Roboto, Arial, sans-serif',
+    h4: {
+      fontWeight: 'bold',
+      color: '#1976d2',
+    },
+    h5: {
+      fontWeight: 'bold',
+      color: '#1976d2',
+    },
+    h6: {
+      fontWeight: 'bold',
+      color: '#1976d2',
+    },
   },
 });
 
@@ -37,8 +50,12 @@ const AdminManagement = () => {
     can_create_tabs: false,
     can_update_tabs: false,
     can_create_customers: false,
+    can_manage_users: false,
   });
+  const [editingUser, setEditingUser] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+
+  const canAccessAdminManagement = user && (user.can_manage_users || (user.can_update_inventory && user.can_report_sales && user.can_create_customers && user.can_create_tabs && user.can_update_tabs));
 
   const fetchUsers = useCallback(async () => {
     setIsLoading(true);
@@ -46,7 +63,6 @@ const AdminManagement = () => {
       const fetchedUsers = await getUsers();
       setUsers(fetchedUsers);
     } catch (error) {
-      console.error('Failed to fetch users:', error);
       setError('Failed to fetch users. Please try again.');
       setSnackbar({ open: true, message: 'Failed to fetch users. Please try again.', severity: 'error' });
       if (error.message === 'Authentication required' || (error.response && error.response.status === 401)) {
@@ -62,10 +78,10 @@ const AdminManagement = () => {
   }, [checkAuth]);
 
   useEffect(() => {
-    if (user && user.is_superuser) {
+    if (user && canAccessAdminManagement) {
       fetchUsers();
     }
-  }, [user, fetchUsers]);
+  }, [user, fetchUsers, canAccessAdminManagement]);
 
   const handleCreateUser = async () => {
     setIsLoading(true);
@@ -81,11 +97,32 @@ const AdminManagement = () => {
         can_create_tabs: false,
         can_update_tabs: false,
         can_create_customers: false,
+        can_manage_users: false,
       });
       setSnackbar({ open: true, message: 'User created successfully', severity: 'success' });
     } catch (error) {
-      console.error('Failed to create user:', error);
       setSnackbar({ open: true, message: 'Failed to create user. Please try again.', severity: 'error' });
+      if (error.message === 'Authentication required' || (error.response && error.response.status === 401)) {
+        logout();
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleOpenEditDialog = (user) => {
+    setEditingUser(user);
+  };
+
+  const handleUpdateUser = async () => {
+    setIsLoading(true);
+    try {
+      await updateUser(editingUser.id, editingUser);
+      await fetchUsers();
+      setSnackbar({ open: true, message: 'User updated successfully', severity: 'success' });
+      setEditingUser(null);
+    } catch (error) {
+      setSnackbar({ open: true, message: 'Failed to update user. Please try again.', severity: 'error' });
       if (error.message === 'Authentication required' || (error.response && error.response.status === 401)) {
         logout();
       }
@@ -101,10 +138,18 @@ const AdminManagement = () => {
     setSnackbar({ ...snackbar, open: false });
   };
 
-  if (!user) return <Typography>Please log in to access admin management.</Typography>;
-  if (!user.is_superuser) return <Alert severity="error">You don't have permission to access this page.</Alert>;
-  if (isLoading) return <CircularProgress />;
-  if (error) return <Alert severity="error">{error}</Alert>;
+  if (!user) {
+    return <Typography>Please log in to access admin management.</Typography>;
+  }
+  if (!canAccessAdminManagement) {
+    return <Alert severity="error">You don't have permission to access this page.</Alert>;
+  }
+  if (isLoading) {
+    return <CircularProgress />;
+  }
+  if (error) {
+    return <Alert severity="error">{error}</Alert>;
+  }
 
   return (
     <ThemeProvider theme={theme}>
@@ -128,6 +173,7 @@ const AdminManagement = () => {
                           <TableCell>Username</TableCell>
                           <TableCell>Email</TableCell>
                           <TableCell>Permissions</TableCell>
+                          <TableCell>Actions</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -140,7 +186,18 @@ const AdminManagement = () => {
                               {user.can_report_sales && 'Report Sales, '}
                               {user.can_create_tabs && 'Create Tabs, '}
                               {user.can_update_tabs && 'Update Tabs, '}
-                              {user.can_create_customers && 'Create Customers'}
+                              {user.can_create_customers && 'Create Customers, '}
+                              {user.can_manage_users && 'Manage Users'}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                variant="outlined"
+                                color="primary"
+                                startIcon={<EditIcon />}
+                                onClick={() => handleOpenEditDialog(user)}
+                              >
+                                Edit
+                              </Button>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -202,6 +259,10 @@ const AdminManagement = () => {
                     control={<Checkbox checked={newUser.can_create_customers} onChange={(e) => setNewUser({ ...newUser, can_create_customers: e.target.checked })} />}
                     label="Can Create Customers"
                   />
+                  <FormControlLabel
+                    control={<Checkbox checked={newUser.can_manage_users} onChange={(e) => setNewUser({ ...newUser, can_manage_users: e.target.checked })} />}
+                    label="Can Manage Users"
+                  />
                   <Tooltip title="Create a new user">
                     <Button 
                       variant="contained" 
@@ -220,6 +281,47 @@ const AdminManagement = () => {
             </Card>
           </Grid>
         </Grid>
+
+        <Dialog open={!!editingUser} onClose={() => setEditingUser(null)}>
+          <DialogTitle>Edit User Permissions</DialogTitle>
+          <DialogContent>
+            {editingUser && (
+              <>
+                <Typography variant="h6">{editingUser.username}</Typography>
+                <FormControlLabel
+                  control={<Checkbox checked={editingUser.can_update_inventory} onChange={(e) => setEditingUser({...editingUser, can_update_inventory: e.target.checked})} />}
+                  label="Can Update Inventory"
+                />
+                <FormControlLabel
+                  control={<Checkbox checked={editingUser.can_report_sales} onChange={(e) => setEditingUser({...editingUser, can_report_sales: e.target.checked})} />}
+                  label="Can Report Sales"
+                />
+                <FormControlLabel
+                  control={<Checkbox checked={editingUser.can_create_tabs} onChange={(e) => setEditingUser({...editingUser, can_create_tabs: e.target.checked})} />}
+                  label="Can Create Tabs"
+                />
+                <FormControlLabel
+                  control={<Checkbox checked={editingUser.can_update_tabs} onChange={(e) => setEditingUser({...editingUser, can_update_tabs: e.target.checked})} />}
+                  label="Can Update Tabs"
+                />
+                <FormControlLabel
+                  control={<Checkbox checked={editingUser.can_create_customers} onChange={(e) => setEditingUser({...editingUser, can_create_customers: e.target.checked})} />}
+                  label="Can Create Customers"
+                />
+                <FormControlLabel
+                  control={<Checkbox checked={editingUser.can_manage_users} onChange={(e) => setEditingUser({...editingUser, can_manage_users: e.target.checked})} />}
+                  label="Can Manage Users"
+                />
+              </>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditingUser(null)}>Cancel</Button>
+            <Button onClick={handleUpdateUser} color="primary">
+              Update
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         <Snackbar
           open={snackbar.open}

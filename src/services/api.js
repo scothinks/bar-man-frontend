@@ -215,5 +215,6 @@ export const updateCustomerTabLimit = (customerId, newLimit) => apiCall('patch',
 // User management
 export const getUsers = () => apiCall('get', '/users/');
 export const createUser = (userData) => apiCall('post', '/users/', userData);
+export const updateUser = (userId, userData) => apiCall('patch', `/users/${userId}/update_permissions/`, userData);
 
 export default api;

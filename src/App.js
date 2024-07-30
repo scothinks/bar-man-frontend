@@ -30,7 +30,7 @@ const Navigation = () => {
               <Button color="inherit" component={Link} to="/">Inventory</Button>
               <Button color="inherit" component={Link} to="/sales">Sales</Button>
               <Button color="inherit" component={Link} to="/customer-tabs">Customer Tabs</Button>
-              {user.is_superuser && (
+              {user && (user.can_manage_users || (user.can_update_inventory && user.can_report_sales && user.can_create_customers && user.can_create_tabs && user.can_update_tabs)) && (
                 <Button color="inherit" component={Link} to="/admin">Admin Management</Button>
               )}
               <Button color="inherit" onClick={logout}>Logout</Button>
