@@ -52,6 +52,9 @@ const Sales = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const itemsPerPage = 5;
   const [error, setError] = useState(null);
+  const [openCustomerDialog, setOpenCustomerDialog] = useState(false);
+  const [selectedSaleId, setSelectedSaleId] = useState(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
 
   const displayError = salesError || error;
 
@@ -181,7 +184,12 @@ const Sales = () => {
       const tabLimit = prompt("Enter tab limit for the new customer (optional):");
       const customerData = { ...newCustomer, tab_limit: tabLimit ? parseFloat(tabLimit) : 0 };
       const addedCustomer = await addCustomer(customerData);
-      setNewSales(newSales.map(sale => ({ ...sale, customer: addedCustomer.id })));
+      if (selectedSaleId) {
+        await updateSaleCustomer(selectedSaleId, addedCustomer.id);
+        fetchSalesData(currentPage, true);
+      } else {
+        setNewSales(newSales.map(sale => ({ ...sale, customer: addedCustomer.id })));
+      }
       setNewCustomer({ name: '', phone_number: '' });
       setOpenNewCustomerDialog(false);
       setSnackbar({ open: true, message: 'Customer added successfully', severity: 'success' });
@@ -261,11 +269,18 @@ const Sales = () => {
     setNewSales(updatedSales);
   };
 
-  const handleAddCustomerToSale = async (saleId) => {
-    const customerId = prompt("Enter customer ID:");
-    if (customerId) {
+  const handleAddCustomerToSale = (saleId) => {
+    setSelectedSaleId(saleId);
+    setSelectedCustomerId('');
+    setOpenCustomerDialog(true);
+  };
+
+  const handleCustomerSelection = async () => {
+    if (selectedCustomerId === 'new') {
+      setOpenNewCustomerDialog(true);
+    } else if (selectedCustomerId) {
       try {
-        await updateSaleCustomer(saleId, customerId);
+        await updateSaleCustomer(selectedSaleId, selectedCustomerId);
         fetchSalesData(currentPage, true);
         setSnackbar({ open: true, message: 'Customer added to sale successfully', severity: 'success' });
       } catch (error) {
@@ -273,6 +288,7 @@ const Sales = () => {
         setError('Failed to add customer to sale. Please try again.');
       }
     }
+    setOpenCustomerDialog(false);
   };
 
   return (
@@ -462,6 +478,32 @@ const Sales = () => {
         <DialogActions>
           <Button onClick={() => setOpenNewCustomerDialog(false)}>Cancel</Button>
           <Button onClick={handleAddCustomer}>Add</Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={openCustomerDialog} onClose={() => setOpenCustomerDialog(false)}>
+        <DialogTitle>Select or Add Customer</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Customer</InputLabel>
+            <Select
+              value={selectedCustomerId}
+              onChange={(e) => setSelectedCustomerId(e.target.value)}
+            >
+              <MenuItem value="">
+                <em>None</em>
+              </MenuItem>
+              {customers.map((customer) => (
+                <MenuItem key={customer.id} value={customer.id}>{customer.name}</MenuItem>
+              ))}
+              <MenuItem value="new">
+                <em>Add New Customer</em>
+              </MenuItem>
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenCustomerDialog(false)}>Cancel</Button>
+          <Button onClick={handleCustomerSelection}>Confirm</Button>
         </DialogActions>
       </Dialog>
       <ErrorAlert error={displayError} onClose={handleCloseError} />
