@@ -4,11 +4,51 @@ import { useAuth } from '../contexts/AuthContext';
 import { 
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, 
   Button, CircularProgress, TextField, Dialog, DialogActions, DialogContent, DialogTitle, 
-  Alert, Box, Tabs, Tab, IconButton, Snackbar, Switch, FormControlLabel
+  Alert, Box, Tabs, Tab, IconButton, Snackbar, Switch, FormControlLabel, Card, CardContent,
+  Grid, Tooltip, Skeleton
 } from '@mui/material';
+import { createTheme, ThemeProvider } from '@mui/material/styles';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import RestoreIcon from '@mui/icons-material/Restore';
+import AddIcon from '@mui/icons-material/Add';
+import RefreshIcon from '@mui/icons-material/Refresh';
+
+const theme = createTheme({
+  palette: {
+    primary: {
+      main: '#1976d2',
+    },
+    secondary: {
+      main: '#dc004e',
+    },
+  },
+  typography: {
+    fontFamily: 'Roboto, Arial, sans-serif',
+    h4: {
+      fontWeight: 'bold',
+      fontSize: '2rem',
+      color: '#1976d2',
+    },
+    h6: {
+      fontWeight: 'bold',
+      fontSize: '1.5rem',
+      color: '#1976d2',
+    },
+  },
+  components: {
+    MuiInputLabel: {
+      styleOverrides: {
+        root: {
+          transform: 'translate(14px, 10px) scale(1)',
+          '&.MuiInputLabel-shrink': {
+            transform: 'translate(14px, -6px) scale(0.75)',
+          },
+        },
+      },
+    },
+  },
+});
 
 const formatCost = (cost) => {
   if (cost === null || cost === undefined) return 'N/A';
@@ -181,162 +221,203 @@ const Inventory = () => {
   if (error) return <Alert severity="error">Error: {error}</Alert>;
 
   return (
-    <Box>
-      <Typography variant="h4" gutterBottom>Inventory Items</Typography>
-      
-      <Tabs value={tabValue} onChange={handleTabChange}>
-        <Tab label="All Items" />
-        <Tab label="Low Inventory" />
-      </Tabs>
+    <ThemeProvider theme={theme}>
+      <Box sx={{ padding: 3 }}>
+        <Typography variant="h4" gutterBottom sx={{ mb: 4 }}>
+          Inventory Items
+        </Typography>
+        
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={8}>
+            <Card>
+              <CardContent>
+                <Tabs value={tabValue} onChange={handleTabChange}>
+                  <Tab label="All Stock" />
+                  <Tab label="Low Stock" />
+                </Tabs>
+                
+                {isLoading ? (
+                  <Skeleton variant="rectangular" width="100%" height={400} />
+                ) : (
+                  <TableContainer component={Paper} sx={{ mt: 2 }}>
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Name</TableCell>
+                          <TableCell align="right">Quantity</TableCell>
+                          <TableCell align="right">Cost</TableCell>
+                          <TableCell align="right">Restock at</TableCell>
+                          <TableCell align="right">Actions</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {(tabValue === 0 ? paginatedItems : lowInventoryItems).map(item => (
+                          <TableRow key={item.id} sx={item.is_deleted ? { backgroundColor: '#ffcccb' } : {}}>
+                            <TableCell component="th" scope="row">{item.name}</TableCell>
+                            <TableCell align="right">{item.quantity}</TableCell>
+                            <TableCell align="right">{formatCost(item.cost)}</TableCell>
+                            <TableCell align="right">{item.low_inventory_threshold}</TableCell>
+                            <TableCell align="right">
+                              {!item.is_deleted && (
+                                <>
+                                  <IconButton onClick={() => handleOpenDialog('edit', item)}>
+                                    <EditIcon />
+                                  </IconButton>
+                                  <IconButton onClick={() => handleDeleteItem(item.id)}>
+                                    <DeleteIcon />
+                                  </IconButton>
+                                </>
+                              )}
+                              {item.is_deleted && (
+                                <>
+                                  <IconButton onClick={() => handleRestoreItem(item.id)}>
+                                    <RestoreIcon />
+                                  </IconButton>
+                                  <IconButton onClick={() => handleConfirmDelete(item.id)}>
+                                    <DeleteIcon />
+                                  </IconButton>
+                                </>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+          
+          <Grid item xs={12} md={4}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Inventory Actions
+                </Typography>
+                {user && user.can_update_inventory && (
+                  <>
+                    <Tooltip title="Add a new inventory item">
+                      <Button 
+                        variant="contained" 
+                        color="primary" 
+                        onClick={() => handleOpenDialog('add')} 
+                        startIcon={<AddIcon />}
+                        fullWidth
+                        sx={{ mb: 2 }}
+                      >
+                        Add New Item
+                      </Button>
+                    </Tooltip>
+                    <TextField
+                      label="Search by first letter"
+                      value={searchLetter}
+                      onChange={(e) => setSearchLetter(e.target.value)}
+                      sx={{ mb: 2 }}
+                      fullWidth
+                    />
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={showDeleted}
+                          onChange={handleShowDeletedChange}
+                          name="showDeleted"
+                          color="primary"
+                        />
+                      }
+                      label="Show Deleted Items"
+                      sx={{ mb: 2 }}
+                    />
+                  </>
+                )}
+                <Tooltip title="Refresh inventory data">
+                  <Button
+                    variant="outlined"
+                    startIcon={<RefreshIcon />}
+                    onClick={refreshInventory}
+                    fullWidth
+                  >
+                    Refresh Inventory
+                  </Button>
+                </Tooltip>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
 
-      {user && user.can_update_inventory && (
-        <Button 
-          variant="contained" 
-          color="primary" 
-          onClick={() => handleOpenDialog('add')} 
-          style={{ margin: '20px 0' }}
+        {tabValue === 0 && (
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
+            <Button onClick={handlePreviousPage} disabled={currentPage === 0}>Previous</Button>
+            <Button onClick={handleNextPage} disabled={(currentPage + 1) * itemsPerPage >= filteredItems.length}>Next</Button>
+          </Box>
+        )}
+
+        <Dialog 
+          open={openDialog} 
+          onClose={handleCloseDialog}
         >
-          Add New Item
-        </Button>
-      )}
+          <DialogTitle>{dialogMode === 'add' ? 'Add New Inventory Item' : 'Edit Inventory Item'}</DialogTitle>
+          <DialogContent>
+            {addItemError && <Alert severity="error" sx={{ mb: 2 }}>{addItemError}</Alert>}
+            <TextField
+              autoFocus
+              margin="dense"
+              name="name"
+              label="Item Name"
+              type="text"
+              fullWidth
+              value={newItem.name}
+              onChange={handleInputChange}
+            />
+            <TextField
+              margin="dense"
+              name="cost"
+              label="Cost"
+              type="number"
+              fullWidth
+              value={newItem.cost}
+              onChange={handleInputChange}
+            />
+            <TextField
+              margin="dense"
+              name="quantity"
+              label="Quantity"
+              type="number"
+              fullWidth
+              value={newItem.quantity}
+              onChange={handleInputChange}
+            />
+            <TextField
+              margin="dense"
+              name="low_inventory_threshold"
+              label="Low Stock"
+              type="number"
+              fullWidth
+              value={newItem.low_inventory_threshold}
+              onChange={handleInputChange}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseDialog} color="primary">
+              Cancel
+            </Button>
+            <Button onClick={handleSaveItem} color="primary">
+              {dialogMode === 'add' ? 'Add Item' : 'Save Changes'}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
-      <TextField
-        label="Search by first letter"
-        value={searchLetter}
-        onChange={(e) => setSearchLetter(e.target.value)}
-        style={{ marginLeft: '20px' }}
-      />
-
-      <FormControlLabel
-        control={
-          <Switch
-            checked={showDeleted}
-            onChange={handleShowDeletedChange}
-            name="showDeleted"
-            color="primary"
-          />
-        }
-        label="Show Deleted Items"
-      />
-
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell align="right">Quantity</TableCell>
-              <TableCell align="right">Cost</TableCell>
-              <TableCell align="right">Low Inventory Threshold</TableCell>
-              <TableCell align="right">Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {(tabValue === 0 ? paginatedItems : lowInventoryItems).map(item => (
-              <TableRow key={item.id} style={item.is_deleted ? { backgroundColor: '#ffcccb' } : {}}>
-                <TableCell component="th" scope="row">{item.name}</TableCell>
-                <TableCell align="right">{item.quantity}</TableCell>
-                <TableCell align="right">{formatCost(item.cost)}</TableCell>
-                <TableCell align="right">{item.low_inventory_threshold}</TableCell>
-                <TableCell align="right">
-                  {!item.is_deleted && (
-                    <>
-                      <IconButton onClick={() => handleOpenDialog('edit', item)}>
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton onClick={() => handleDeleteItem(item.id)}>
-                        <DeleteIcon />
-                      </IconButton>
-                    </>
-                  )}
-                  {item.is_deleted && (
-                    <>
-                      <IconButton onClick={() => handleRestoreItem(item.id)}>
-                        <RestoreIcon />
-                      </IconButton>
-                      <IconButton onClick={() => handleConfirmDelete(item.id)}>
-                        <DeleteIcon />
-                      </IconButton>
-                    </>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
-      {tabValue === 0 && (
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
-          <Button onClick={handlePreviousPage} disabled={currentPage === 0}>Previous</Button>
-          <Button onClick={handleNextPage} disabled={(currentPage + 1) * itemsPerPage >= filteredItems.length}>Next</Button>
-        </Box>
-      )}
-
-      <Dialog 
-        open={openDialog} 
-        onClose={handleCloseDialog}
-      >
-        <DialogTitle>{dialogMode === 'add' ? 'Add New Inventory Item' : 'Edit Inventory Item'}</DialogTitle>
-        <DialogContent>
-          {addItemError && <Alert severity="error" sx={{ mb: 2 }}>{addItemError}</Alert>}
-          <TextField
-            autoFocus
-            margin="dense"
-            name="name"
-            label="Item Name"
-            type="text"
-            fullWidth
-            value={newItem.name}
-            onChange={handleInputChange}
-          />
-          <TextField
-            margin="dense"
-            name="cost"
-            label="Cost"
-            type="number"
-            fullWidth
-            value={newItem.cost}
-            onChange={handleInputChange}
-          />
-          <TextField
-            margin="dense"
-            name="quantity"
-            label="Quantity"
-            type="number"
-            fullWidth
-            value={newItem.quantity}
-            onChange={handleInputChange}
-          />
-          <TextField
-            margin="dense"
-            name="low_inventory_threshold"
-            label="Low Inventory Threshold"
-            type="number"
-            fullWidth
-            value={newItem.low_inventory_threshold}
-            onChange={handleInputChange}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialog} color="primary">
-            Cancel
-          </Button>
-          <Button onClick={handleSaveItem} color="primary">
-            {dialogMode === 'add' ? 'Add Item' : 'Save Changes'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={handleCloseSnackbar}
-      >
-        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-    </Box>
+        <Snackbar
+          open={snackbar.open}
+          autoHideDuration={6000}
+          onClose={handleCloseSnackbar}
+        >
+          <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+            {snackbar.message}
+          </Alert>
+        </Snackbar>
+      </Box>
+    </ThemeProvider>
   );
 };
 

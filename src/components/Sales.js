@@ -4,17 +4,54 @@ import { useInventory } from '../contexts/InventoryContext';
 import { useCustomer } from '../contexts/CustomerContext';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  Button, Typography,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
+  Button, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
   CircularProgress, Box, TextField, Select, MenuItem, FormControl, InputLabel,
-  Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar, IconButton
+  Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar, IconButton,
+  Card, CardContent, Grid, Tooltip, Skeleton
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { enUS } from 'date-fns/locale';
 import { subDays } from 'date-fns';
-import { AddCircle, RemoveCircle } from '@mui/icons-material';
+import { AddCircle, RemoveCircle, Search, Refresh } from '@mui/icons-material';
+import { createTheme, ThemeProvider } from '@mui/material/styles';
 import ErrorAlert from './ErrorAlert';
+
+const theme = createTheme({
+  palette: {
+    primary: {
+      main: '#1976d2',
+    },
+    secondary: {
+      main: '#dc004e',
+    },
+  },
+  typography: {
+    fontFamily: 'Roboto, Arial, sans-serif',
+    h4: {
+      fontWeight: 'bold',
+      fontSize: '2rem',
+      color: '#1976d2',
+    },
+    h6: {
+      fontWeight: 'bold',
+      fontSize: '1.5rem',
+      color: '#1976d2',
+    },
+  },
+  components: {
+    MuiInputLabel: {
+      styleOverrides: {
+        root: {
+          transform: 'translate(14px, 10px) scale(1)',
+          '&.MuiInputLabel-shrink': {
+            transform: 'translate(14px, -6px) scale(0.75)',
+          },
+        },
+      },
+    },
+  },
+});
 
 const formatCost = (cost) => {
   if (cost === null || cost === undefined) return 'N/A';
@@ -292,99 +329,205 @@ const Sales = () => {
   };
 
   return (
-    <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={enUS}>
-      {!user ? (
-        <Typography>Please log in to view sales.</Typography>
-      ) : (
-        <Box sx={{ display: 'flex', flexDirection: 'row', height: '100vh', padding: 2 }}>
-          <Box sx={{ flexGrow: 1, overflowY: 'auto', mr: 2 }}>
-            <Typography variant="h4" gutterBottom>Sales List</Typography>
-            <Typography variant="h6" gutterBottom>
-              Total Done: {formatCost(summary.total_done)} | Total Pending: {formatCost(summary.total_pending)}
+    <ThemeProvider theme={theme}>
+      <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={enUS}>
+        {!user ? (
+          <Typography>Please log in to view sales.</Typography>
+        ) : (
+          <Box sx={{ padding: 3 }}>
+            <Typography variant="h4" gutterBottom sx={{ mb: 4 }}>
+              Sales Report
             </Typography>
-            <Box sx={{ display: 'flex', mb: 2, alignItems: 'center' }}>
-              <TextField
-                label="Search Customer, Item, or Admin"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                sx={{ mr: 2 }}
-              />
-              <FormControl sx={{ minWidth: 120, mr: 2 }}>
-                <InputLabel>Date Filter</InputLabel>
-                <Select value={dateFilter} onChange={(e) => handleDateFilterChange(e.target.value)}>
-                  <MenuItem value="all">All time</MenuItem>
-                  <MenuItem value="day">Last 24 hours</MenuItem>
-                  <MenuItem value="week">Last 7 days</MenuItem>
-                  <MenuItem value="month">Last 30 days</MenuItem>
-                  <MenuItem value="year">Last Year</MenuItem>
-                  <MenuItem value="custom">Custom</MenuItem>
-                </Select>
-              </FormControl>
-              {dateFilter === 'custom' && (
-                <>
-                  <DatePicker
-                    label="Start Date"
-                    value={startDate}
-                    onChange={(newDate) => handleCustomDateChange(newDate, endDate)}
-                    renderInput={(params) => <TextField {...params} />}
-                  />
-                  <DatePicker
-                    label="End Date"
-                    value={endDate}
-                    onChange={(newDate) => handleCustomDateChange(startDate, newDate)}
-                    renderInput={(params) => <TextField {...params} sx={{ ml: 2 }} />}
-                  />
-                </>
-              )}
-            </Box>
-            {sales.length > 0 ? (
-              <TableContainer component={Paper}>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Item</TableCell>
-                      <TableCell>Quantity</TableCell>
-                      <TableCell>Amount</TableCell>
-                      <TableCell>Payment Status</TableCell>
-                      <TableCell>Customer</TableCell>
-                      <TableCell>Recorded By</TableCell>
-                      <TableCell>Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {sales.map((sale) => (
-                      <TableRow key={sale.id}>
-                        <TableCell>{sale.item_name}</TableCell>
-                        <TableCell>{sale.quantity}</TableCell>
-                        <TableCell>{formatCost(sale.total_amount)}</TableCell>
-                        <TableCell>{sale.payment_status}</TableCell>
-                        <TableCell>{sale.customer_name || 'N/A'}</TableCell>
-                        <TableCell>{sale.recorded_by_username}</TableCell>
-                        <TableCell>
-                          <Button 
-                            variant="contained"
-                            color={sale.payment_status === 'PENDING' ? 'error' : 'primary'}
-                            onClick={() => handleUpdatePaymentStatus(sale.id, sale.payment_status === 'PENDING' ? 'DONE' : 'PENDING')}
+            
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={8}>
+                <Card>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', mb: 2, alignItems: 'center' }}>
+                      <TextField
+                        label="Search"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        sx={{ mr: 2 }}
+                        InputProps={{
+                          startAdornment: (
+                            <IconButton>
+                              <Search />
+                            </IconButton>
+                          ),
+                        }}
+                      />
+                      <FormControl sx={{ minWidth: 120, mr: 2 }}>
+                        <InputLabel>Date Filter</InputLabel>
+                        <Select value={dateFilter} onChange={(e) => handleDateFilterChange(e.target.value)}>
+                          <MenuItem value="all">All time</MenuItem>
+                          <MenuItem value="day">Last 24 hours</MenuItem>
+                          <MenuItem value="week">Last 7 days</MenuItem>
+                          <MenuItem value="month">Last 30 days</MenuItem>
+                          <MenuItem value="year">Last Year</MenuItem>
+                          <MenuItem value="custom">Custom</MenuItem>
+                        </Select>
+                      </FormControl>
+                      {dateFilter === 'custom' && (
+                        <>
+                          <DatePicker
+                            label="Start Date"
+                            value={startDate}
+                            onChange={(newDate) => handleCustomDateChange(newDate, endDate)}
+                            renderInput={(params) => <TextField {...params} />}
+                          />
+                          <DatePicker
+                            label="End Date"
+                            value={endDate}
+                            onChange={(newDate) => handleCustomDateChange(startDate, newDate)}
+                            renderInput={(params) => <TextField {...params} sx={{ ml: 2 }} />}
+                          />
+                        </>
+                      )}
+                      <Tooltip title="Refresh sales data">
+                        <IconButton onClick={() => fetchSalesData(currentPage, true)}>
+                          <Refresh />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                    
+                    {loading ? (
+                      <Skeleton variant="rectangular" width="100%" height={400} />
+                    ) : (
+                      <TableContainer component={Paper}>
+                        <Table>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Item</TableCell>
+                              <TableCell>Qty</TableCell>
+                              <TableCell>Total</TableCell>
+                              <TableCell>Status</TableCell>
+                              <TableCell>Customer</TableCell>
+                              <TableCell>Agent</TableCell>
+                              <TableCell>Actions</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {sales.map((sale) => (
+                              <TableRow key={sale.id}>
+                                <TableCell>{sale.item_name}</TableCell>
+                                <TableCell>{sale.quantity}</TableCell>
+                                <TableCell>{formatCost(sale.total_amount)}</TableCell>
+                                <TableCell>{sale.payment_status}</TableCell>
+                                <TableCell>{sale.customer_name || 'N/A'}</TableCell>
+                                <TableCell>{sale.recorded_by_username}</TableCell>
+                                <TableCell>
+                                  <Button 
+                                    variant="contained"
+                                    color={sale.payment_status === 'PENDING' ? 'error' : 'primary'}
+                                    onClick={() => handleUpdatePaymentStatus(sale.id, sale.payment_status === 'PENDING' ? 'DONE' : 'PENDING')}
+                                  >
+                                    {sale.payment_status === 'PENDING' ? 'Mark as Paid' : 'Mark as Pending'}
+                                  </Button>
+                                  {!sale.customer_name && (
+                                    <Button
+                                      variant="outlined"
+                                      onClick={() => handleAddCustomerToSale(sale.id)}
+                                    >
+                                      Add Customer
+                                    </Button>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+              
+              <Grid item xs={12} md={4}>
+                <Card sx={{ mb: 4 }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Summary
+                    </Typography>
+                    <Typography variant="body1">
+                      Total Done: {formatCost(summary.total_done)}
+                    </Typography>
+                    <Typography variant="body1">
+                      Total Pending: {formatCost(summary.total_pending)}
+                    </Typography>
+                    <Tooltip title="Refresh summary">
+                      <IconButton onClick={() => fetchSalesData(currentPage, true)}>
+                        <Refresh />
+                      </IconButton>
+                    </Tooltip>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Add New Sales
+                    </Typography>
+                    {newSales.map((sale, index) => (
+                      <Box key={index} sx={{ mb: 2 }}>
+                        <FormControl fullWidth margin="normal">
+                          <InputLabel>Item</InputLabel>
+                          <Select
+                            value={sale.item}
+                            onChange={(e) => handleSaleChange(index, 'item', e.target.value)}
                           >
-                            {sale.payment_status === 'PENDING' ? 'Mark as Paid' : 'Mark as Pending'}
-                          </Button>
-                          {!sale.customer_name && (
-                            <Button
-                              variant="outlined"
-                              onClick={() => handleAddCustomerToSale(sale.id)}
-                            >
-                              Add Customer
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
+                            {inventoryItems.map((item) => (
+                              <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                        <TextField
+                          fullWidth
+                          label="Quantity"
+                          type="number"
+                          value={sale.quantity}
+                          onChange={(e) => handleSaleChange(index, 'quantity', parseInt(e.target.value))}
+                          margin="normal"
+                        />
+                        <IconButton onClick={() => removeSaleField(index)} color="secondary">
+                          <RemoveCircle />
+                        </IconButton>
+                      </Box>
                     ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            ) : (
-              <Typography>No sales found for the selected criteria.</Typography>
-            )}
+                    <Button onClick={addNewSaleField} variant="outlined" fullWidth startIcon={<AddCircle />} sx={{ mb: 2 }}>
+                      Add Another Item
+                    </Button>
+                    <FormControl fullWidth margin="normal">
+                      <InputLabel>Customer</InputLabel>
+                      <Select
+                        value={newSales[0].customer || ''}
+                        onChange={(e) => setNewSales(newSales.map(sale => ({ ...sale, customer: e.target.value })))}
+                      >
+                        <MenuItem value="">
+                          <em>None</em>
+                        </MenuItem>
+                        {customers.map((customer) => (
+                          <MenuItem key={customer.id} value={customer.id}>{customer.name}</MenuItem>
+                        ))}
+                        <MenuItem value="new">
+                          <em>Add New Customer</em>
+                        </MenuItem>
+                      </Select>
+                    </FormControl>
+                    {newSales[0].customer === 'new' && (
+                      <Button onClick={() => setOpenNewCustomerDialog(true)} fullWidth variant="outlined" sx={{ mt: 1 }}>
+                        Add New Customer
+                      </Button>
+                    )}
+                    <Tooltip title="Add new sales">
+                      <Button onClick={handleAddSales} variant="contained" fullWidth sx={{ mt: 2 }} startIcon={<AddCircle />}>
+                        Add Sales
+                      </Button>
+                    </Tooltip>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+
             {sales.length > 0 && (
               <>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
@@ -396,143 +539,87 @@ const Sales = () => {
                 </Typography>
               </>
             )}
-          </Box>
-          <Box sx={{ width: '300px' }}>
-            <Typography variant="h6" gutterBottom>Add New Sales</Typography>
-            {newSales.map((sale, index) => (
-              <Box key={index} sx={{ mb: 2 }}>
+
+            <Dialog open={openNewCustomerDialog} onClose={() => setOpenNewCustomerDialog(false)}>
+              <DialogTitle>Add New Customer</DialogTitle>
+              <DialogContent>
+                <TextField
+                  autoFocus
+                  margin="dense"
+                  label="Name"
+                  fullWidth
+                  value={newCustomer.name}
+                  onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
+                />
+                <TextField
+                  margin="dense"
+                  label="Phone Number"
+                  fullWidth
+                  value={newCustomer.phone_number}
+                  onChange={(e) => setNewCustomer({ ...newCustomer, phone_number: e.target.value })}
+                />
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setOpenNewCustomerDialog(false)}>Cancel</Button>
+                <Button onClick={handleAddCustomer}>Add</Button>
+              </DialogActions>
+            </Dialog>
+            <Dialog open={openCustomerDialog} onClose={() => setOpenCustomerDialog(false)}>
+              <DialogTitle>Select or Add Customer</DialogTitle>
+              <DialogContent>
                 <FormControl fullWidth margin="normal">
-                  <InputLabel>Item</InputLabel>
+                  <InputLabel>Customer</InputLabel>
                   <Select
-                    value={sale.item}
-                    onChange={(e) => handleSaleChange(index, 'item', e.target.value)}
+                    value={selectedCustomerId}
+                    onChange={(e) => setSelectedCustomerId(e.target.value)}
                   >
-                    {inventoryItems.map((item) => (
-                      <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
+                    <MenuItem value="">
+                      <em>None</em>
+                    </MenuItem>
+                    {customers.map((customer) => (
+                      <MenuItem key={customer.id} value={customer.id}>{customer.name}</MenuItem>
                     ))}
+                    <MenuItem value="new">
+                      <em>Add New Customer</em>
+                    </MenuItem>
                   </Select>
                 </FormControl>
-                <TextField
-                  fullWidth
-                  label="Quantity"
-                  type="number"
-                  value={sale.quantity}
-                  onChange={(e) => handleSaleChange(index, 'quantity', parseInt(e.target.value))}
-                  margin="normal"
-                />
-                <IconButton onClick={() => removeSaleField(index)} color="secondary">
-                  <RemoveCircle />
-                </IconButton>
-              </Box>
-            ))}
-            <Button onClick={addNewSaleField} variant="outlined" fullWidth startIcon={<AddCircle />} sx={{ mb: 2 }}>
-              Add Another Item
-            </Button>
-            <FormControl fullWidth margin="normal">
-              <InputLabel>Customer</InputLabel>
-              <Select
-                value={newSales[0].customer || ''}
-                onChange={(e) => setNewSales(newSales.map(sale => ({ ...sale, customer: e.target.value })))}
-              >
-                <MenuItem value="">
-                  <em>None</em>
-                </MenuItem>
-                {customers.map((customer) => (
-                  <MenuItem key={customer.id} value={customer.id}>{customer.name}</MenuItem>
-                ))}
-                <MenuItem value="new">
-                  <em>Add New Customer</em>
-                </MenuItem>
-              </Select>
-            </FormControl>
-            {newSales[0].customer === 'new' && (
-              <Button onClick={() => setOpenNewCustomerDialog(true)} fullWidth variant="outlined" sx={{ mt: 1 }}>
-                Add New Customer
-              </Button>
-            )}
-            <Button onClick={handleAddSales} variant="contained" fullWidth sx={{ mt: 2 }}>
-              Add Sales
-            </Button>
-          </Box>
-        </Box>
-      )}
-      <Dialog open={openNewCustomerDialog} onClose={() => setOpenNewCustomerDialog(false)}>
-        <DialogTitle>Add New Customer</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Name"
-            fullWidth
-            value={newCustomer.name}
-            onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
-          />
-          <TextField
-            margin="dense"
-            label="Phone Number"
-            fullWidth
-            value={newCustomer.phone_number}
-            onChange={(e) => setNewCustomer({ ...newCustomer, phone_number: e.target.value })}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenNewCustomerDialog(false)}>Cancel</Button>
-          <Button onClick={handleAddCustomer}>Add</Button>
-        </DialogActions>
-      </Dialog>
-      <Dialog open={openCustomerDialog} onClose={() => setOpenCustomerDialog(false)}>
-        <DialogTitle>Select or Add Customer</DialogTitle>
-        <DialogContent>
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Customer</InputLabel>
-            <Select
-              value={selectedCustomerId}
-              onChange={(e) => setSelectedCustomerId(e.target.value)}
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setOpenCustomerDialog(false)}>Cancel</Button>
+                <Button onClick={handleCustomerSelection}>Confirm</Button>
+              </DialogActions>
+            </Dialog>
+            <ErrorAlert error={displayError} onClose={handleCloseError} />
+            <Snackbar
+              open={snackbar.open}
+              autoHideDuration={6000}
+              onClose={handleCloseSnackbar}
             >
-              <MenuItem value="">
-                <em>None</em>
-              </MenuItem>
-              {customers.map((customer) => (
-                <MenuItem key={customer.id} value={customer.id}>{customer.name}</MenuItem>
-              ))}
-              <MenuItem value="new">
-                <em>Add New Customer</em>
-              </MenuItem>
-            </Select>
-          </FormControl>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenCustomerDialog(false)}>Cancel</Button>
-          <Button onClick={handleCustomerSelection}>Confirm</Button>
-        </DialogActions>
-      </Dialog>
-      <ErrorAlert error={displayError} onClose={handleCloseError} />
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={handleCloseSnackbar}
-      >
-        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-      {loading && (
-        <Box sx={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          backgroundColor: 'rgba(255, 255, 255, 0.7)',
-          zIndex: 9999,
-        }}>
-          <CircularProgress />
-        </Box>
-      )}
-    </LocalizationProvider>
+              <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+                {snackbar.message}
+              </Alert>
+            </Snackbar>
+            {loading && (
+              <Box sx={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                zIndex: 9999,
+              }}>
+                <CircularProgress />
+              </Box>
+            )}
+          </Box>
+        )}
+      </LocalizationProvider>
+    </ThemeProvider>
   );
 };
 
