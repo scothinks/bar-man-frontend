@@ -10,7 +10,9 @@ import Sales from './components/Sales';
 import CustomerTabs from './components/CustomerTabs';
 import AdminManagement from './components/AdminManagement';
 import Login from './components/Login';
+import Home from './components/Home';
 import ErrorBoundary from './components/ErrorBoundary';
+import Tutorial from './components/Tutorial';
 import useNetworkStatus from './hooks/useNetworkStatus';
 
 const Navigation = () => {
@@ -21,13 +23,14 @@ const Navigation = () => {
   return (
     <AppBar position="static">
       <Toolbar>
-        <Typography variant="h6" component={Link} to="/" style={{ textDecoration: 'none', color: 'white', flexGrow: 1 }}>
+        <Typography variant="h6" component={Link} to="/home" style={{ textDecoration: 'none', color: 'white', flexGrow: 1 }}>
           BarMan
         </Typography>
         <Box>
           {user && (
             <>
-              <Button color="inherit" component={Link} to="/">Inventory</Button>
+              <Button color="inherit" component={Link} to="/home">Home</Button>
+              <Button color="inherit" component={Link} to="/inventory">Inventory</Button>
               <Button color="inherit" component={Link} to="/sales">Sales</Button>
               <Button color="inherit" component={Link} to="/customer-tabs">Customer Tabs</Button>
               {user && (user.can_manage_users || (user.can_update_inventory && user.can_report_sales && user.can_create_customers && user.can_create_tabs && user.can_update_tabs)) && (
@@ -68,10 +71,13 @@ const App = () => {
                 <Container>
                   <Routes>
                     <Route path="/login" element={<Login />} />
-                    <Route path="/" element={<PrivateRoute><Inventory /></PrivateRoute>} />
+                    <Route path="/home" element={<PrivateRoute><Home /></PrivateRoute>} />
+                    <Route path="/inventory" element={<PrivateRoute><Inventory /></PrivateRoute>} />
                     <Route path="/sales" element={<PrivateRoute><Sales /></PrivateRoute>} />
                     <Route path="/customer-tabs" element={<PrivateRoute><CustomerTabs /></PrivateRoute>} />
                     <Route path="/admin" element={<PrivateRoute><AdminManagement /></PrivateRoute>} />
+                    <Route path="/tutorial" element={<Tutorial />} />
+                    <Route path="/" element={<Navigate to="/home" replace />} />
                   </Routes>
                 </Container>
                 <NetworkStatusAlert />

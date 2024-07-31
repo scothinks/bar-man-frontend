@@ -22,6 +22,7 @@ export const SalesProvider = ({ children }) => {
   const [totalSalesCount, setTotalSalesCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [last24HoursSummary, setLast24HoursSummary] = useState({ total_done: 0, total_pending: 0 });
 
   const fetchSales = useCallback(async (params = { limit: 5, page: 1 }) => {
     if (!isAuthenticated()) return;
@@ -42,6 +43,22 @@ export const SalesProvider = ({ children }) => {
       setIsLoading(false);
     }
   }, [isAuthenticated, logout]);
+
+  const fetchLast24HoursSummary = useCallback(async () => {
+    if (!isAuthenticated()) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await apiSearchSales({ period: 'day' });
+      setLast24HoursSummary(response.summary || { total_done: 0, total_pending: 0 });
+    } catch (err) {
+      console.error('Error fetching last 24 hours sales summary:', err);
+      setError('Failed to fetch last 24 hours sales summary. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated]);
+
 
   const fetchCustomers = useCallback(async () => {
     if (!isAuthenticated()) return;
@@ -239,6 +256,25 @@ export const SalesProvider = ({ children }) => {
     fetchCustomers();
   }, [fetchCustomers]);
 
+  const fetchSummary = useCallback(async () => {
+    if (!isAuthenticated()) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await apiSearchSales({ period: 'all' });
+      setSummary(response.summary || { total_done: 0, total_pending: 0 });
+      console.log('Summary fetched successfully');
+    } catch (err) {
+      console.error('Error fetching summary:', err);
+      setError('Failed to fetch sales summary. Please try again.');
+      if (err.message === 'Authentication required' || (err.response && err.response.status === 401)) {
+        logout();
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, logout]);
+
   return (
     <SalesContext.Provider value={{ 
       sales,
@@ -247,6 +283,9 @@ export const SalesProvider = ({ children }) => {
       error,
       setError,
       summary,
+      fetchSummary,
+      last24HoursSummary,
+      fetchLast24HoursSummary,
       addMultipleSales,
       updatePaymentStatus,
       fetchCustomers: refreshCustomers,

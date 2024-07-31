@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { setAuthToken, login as apiLogin, getCurrentUser, logout as apiLogout } from '../services/api';
 
 const AuthContext = createContext();
@@ -6,7 +6,7 @@ const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [error, setError] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const lastCheckRef = useRef(0);
 
   const login = async (username, password) => {
@@ -15,6 +15,8 @@ export const AuthProvider = ({ children }) => {
     try {
       const data = await apiLogin(username, password);
       setUser(data.user);
+      localStorage.setItem('token', data.token);
+      setAuthToken(data.token);
       setIsLoading(false);
       return data;
     } catch (error) {
@@ -32,6 +34,7 @@ export const AuthProvider = ({ children }) => {
       console.error('Logout failed:', error);
     } finally {
       setAuthToken(null);
+      localStorage.removeItem('token');
       setUser(null);
       setIsLoading(false);
     }
@@ -69,13 +72,17 @@ export const AuthProvider = ({ children }) => {
     } else {
       console.log('No token found');
       setUser(null);
+      setIsLoading(false);
     }
   }, [logout]);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
   const isAuthenticated = useCallback(() => {
     return !!user && !!localStorage.getItem('token');
   }, [user]);
-
 
   const refreshUserData = useCallback(async () => {
     if (isAuthenticated()) {
@@ -93,7 +100,6 @@ export const AuthProvider = ({ children }) => {
       }
     }
   }, [logout, isAuthenticated]);
-
 
   return (
     <AuthContext.Provider value={{ 
