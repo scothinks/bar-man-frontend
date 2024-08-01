@@ -48,10 +48,10 @@ api.interceptors.request.use(
     console.log('Full request headers:', JSON.stringify(config.headers, null, 2));
     console.log(`Request URL: ${config.url}`);
     console.log(`Request Method: ${config.method}`);
-    console.log(`Request Params: ${JSON.stringify(config.params, null, 2)}`);
+    console.log(`Request Params:`, config.params);
 
     if (config.method === 'post' || config.method === 'put') {
-      console.log('Request Body:', JSON.stringify(config.data, null, 2));
+      console.log('Request Body:', config.data);
     }
 
     return config;
@@ -141,9 +141,12 @@ const apiCall = async (method, url, data = null, params = null) => {
 // Inventory operations
 export const getInventoryItems = async (includeDeleted = false) => {
   try {
-    const response = await apiCall('get', '/inventory/inventoryitems/', null, { include_deleted: includeDeleted });
-    return response.results || response;
+    const response = await api.get('/inventory/inventoryitems/', {
+      params: { include_deleted: includeDeleted }
+    });
+    return response.data.results || response.data;
   } catch (error) {
+    console.error('Error fetching inventory items:', error);
     throw error;
   }
 };

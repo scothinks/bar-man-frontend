@@ -113,6 +113,36 @@ export const CustomerProvider = ({ children }) => {
     }
   }, [isAuthenticated, logout]);
 
+  const updateCustomer = useCallback(async (customerId, customerData) => {
+    if (!isAuthenticated()) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      console.log(`Attempting to update customer ${customerId}`);
+      const response = await api.patch(`/customers/${customerId}/`, customerData);
+      console.log('Update response:', response.data);
+      setCustomers(prevCustomers => 
+        prevCustomers.map(c => c.id === customerId ? { ...c, ...response.data } : c)
+      );
+      // Update customerTabs if the customer name has changed
+      if (customerData.name) {
+        setCustomerTabs(prevTabs => 
+          prevTabs.map(tab => tab.customer_id === customerId ? { ...tab, customer_name: customerData.name } : tab)
+        );
+      }
+      return response.data;
+    } catch (err) {
+      console.error('Error updating customer:', err);
+      setError('Failed to update customer. Please try again.');
+      if (err.response && err.response.status === 401) {
+        logout();
+      }
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, logout]);
+
   const refreshCustomerData = useCallback(async () => {
     await fetchCustomerData();
   }, [fetchCustomerData]);
@@ -127,6 +157,7 @@ export const CustomerProvider = ({ children }) => {
       error,
       isLoading,
       updateCustomerTabLimit,
+      updateCustomer,
     }}>
       {children}
     </CustomerContext.Provider>

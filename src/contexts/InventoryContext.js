@@ -23,13 +23,16 @@ export const InventoryProvider = ({ children }) => {
     setError(null);
     try {
       const data = await getInventoryItems(includeDeleted);
+      console.log('Raw API response:', JSON.stringify(data, null, 2));
       const items = data.results || data;
       const formattedItems = Array.isArray(items)
         ? items.map(item => ({
             ...item,
-            cost: typeof item.cost === 'string' ? parseFloat(item.cost) : item.cost
+            cost: typeof item.cost === 'string' ? parseFloat(item.cost) : item.cost,
+            is_deleted: item.is_deleted === true || item.is_deleted === 'true',
           }))
         : [];
+      console.log('Formatted inventory items:', JSON.stringify(formattedItems, null, 2));
       setInventoryItems(formattedItems);
     } catch (err) {
       console.error('Error fetching inventory items:', err);

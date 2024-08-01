@@ -297,7 +297,9 @@ const Sales = () => {
   };
 
   const removeSaleField = (index) => {
-    setNewSales(newSales.filter((_, i) => i !== index));
+    if (newSales.length > 1) {
+      setNewSales(newSales.filter((_, i) => i !== index));
+    }
   };
 
   const handleSaleChange = (index, field, value) => {
@@ -488,7 +490,7 @@ const Sales = () => {
                           onChange={(e) => handleSaleChange(index, 'quantity', parseInt(e.target.value))}
                           margin="normal"
                         />
-                        <IconButton onClick={() => removeSaleField(index)} color="secondary">
+                        <IconButton onClick={() => removeSaleField(index)} color="secondary" disabled={newSales.length ===1}>
                           <RemoveCircle />
                         </IconButton>
                       </Box>

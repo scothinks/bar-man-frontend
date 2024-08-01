@@ -71,6 +71,7 @@ const Inventory = () => {
     restoreInventoryItem,
     refreshInventory 
   } = useInventory();
+  
   const [openDialog, setOpenDialog] = useState(false);
   const [dialogMode, setDialogMode] = useState('add');
   const [selectedItem, setSelectedItem] = useState(null);
@@ -82,13 +83,22 @@ const Inventory = () => {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [showDeleted, setShowDeleted] = useState(false);
 
-  const itemsPerPage = 10;
+  const itemsPerPage = 5;
 
   useEffect(() => {
     if (user) {
+      console.log('User permissions:', {
+        can_update_inventory: user.can_update_inventory,
+        is_superuser: user.is_superuser
+      });
       fetchInventoryItems(showDeleted);
     }
   }, [user, fetchInventoryItems, showDeleted]);
+
+  useEffect(() => {
+    console.log('Current inventory items:', JSON.stringify(inventoryItems, null,2));
+    console.log('Deleted items:', JSON.stringify(inventoryItems.filter(item => item.is_deleted), null, 2));
+  }, [inventoryItems]);
 
   const filteredItems = useMemo(() => {
     return inventoryItems.filter(item => 
@@ -181,13 +191,31 @@ const Inventory = () => {
 
   const handleRestoreItem = async (itemId) => {
     try {
-      await restoreInventoryItem(itemId);
-      refreshInventory();
+      console.log(`Attempting to restore item with ID: ${itemId}`);
+      const restoredItem = await restoreInventoryItem(itemId);
+      console.log('Item restored:', restoredItem);
+  
+      // Refresh the inventory to ensure we have the latest data
+      await refreshInventory();
+  
       setSnackbar({ open: true, message: 'Item restored successfully', severity: 'success' });
     } catch (error) {
       console.error("Error restoring item:", error);
-      setSnackbar({ open: true, message: 'Failed to restore item. Please try again.', severity: 'error' });
+      
+      if (error.response) {
+        console.error("Error response:", error.response.data);
+        console.error("Error status:", error.response.status);
+      }
+  
+      let errorMessage = 'Failed to restore item. Please try again.';
+      if (error.response && error.response.data && error.response.data.detail) {
+        errorMessage = error.response.data.detail;
+      }
+  
+      setSnackbar({ open: true, message: errorMessage, severity: 'error' });
+  
       if (error.response && error.response.status === 401) {
+        console.log('Unauthorized access detected, logging out');
         logout();
       }
     }
@@ -251,36 +279,43 @@ const Inventory = () => {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {(tabValue === 0 ? paginatedItems : lowInventoryItems).map(item => (
-                          <TableRow key={item.id} sx={item.is_deleted ? { backgroundColor: '#ffcccb' } : {}}>
-                            <TableCell component="th" scope="row">{item.name}</TableCell>
-                            <TableCell align="right">{item.quantity}</TableCell>
-                            <TableCell align="right">{formatCost(item.cost)}</TableCell>
-                            <TableCell align="right">{item.low_inventory_threshold}</TableCell>
-                            <TableCell align="right">
-                              {!item.is_deleted && (
-                                <>
-                                  <IconButton onClick={() => handleOpenDialog('edit', item)}>
-                                    <EditIcon />
-                                  </IconButton>
-                                  <IconButton onClick={() => handleDeleteItem(item.id)}>
-                                    <DeleteIcon />
-                                  </IconButton>
-                                </>
-                              )}
-                              {item.is_deleted && (
-                                <>
-                                  <IconButton onClick={() => handleRestoreItem(item.id)}>
-                                    <RestoreIcon />
-                                  </IconButton>
-                                  <IconButton onClick={() => handleConfirmDelete(item.id)}>
-                                    <DeleteIcon />
-                                  </IconButton>
-                                </>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {(tabValue === 0 ? paginatedItems : lowInventoryItems).map(item => {
+                          console.log(`Item ${item.id}:`, JSON.stringify(item, null, 2));
+                          return (
+                            <TableRow key={item.id} sx={item.is_deleted ? { backgroundColor: '#ffcccb' } : {}}>
+                              <TableCell component="th" scope="row">{item.name}</TableCell>
+                              <TableCell align="right">{item.quantity}</TableCell>
+                              <TableCell align="right">{formatCost(item.cost)}</TableCell>
+                              <TableCell align="right">{item.low_inventory_threshold}</TableCell>
+                              <TableCell align="right">
+                                {console.log(`Rendering buttons for item ${item.id}, is_deleted:`, item.is_deleted)}
+                                {(user.can_update_inventory || user.is_superuser) && (
+                                  <>
+                                    {!item.is_deleted ? (
+                                      <>
+                                        <IconButton onClick={() => handleOpenDialog('edit', item)}>
+                                          <EditIcon />
+                                        </IconButton>
+                                        <IconButton onClick={() => handleDeleteItem(item.id)}>
+                                          <DeleteIcon />
+                                        </IconButton>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <IconButton onClick={() => handleRestoreItem(item.id)}>
+                                          <RestoreIcon />
+                                        </IconButton>
+                                        <IconButton onClick={() => handleConfirmDelete(item.id)}>
+                                          <DeleteIcon />
+                                        </IconButton>
+                                      </>
+                                    )}
+                                  </>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </TableContainer>
@@ -352,7 +387,7 @@ const Inventory = () => {
           </Box>
         )}
 
-        <Dialog 
+<Dialog 
           open={openDialog} 
           onClose={handleCloseDialog}
         >
